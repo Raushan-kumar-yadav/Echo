@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActiveTool } from '../context/toolContext';
 import WorkerProgress from '../workspaces/worker/WorkerProgress';
-import { saveProject, saveProjectTo, loadProject, newProject } from '../api/projectApi';
-import './TitleBar.css';
+import { saveProject, saveProjectTo } from '../api/projectAPI';
+import './navBar.css';
 import '../workspaces/tools/ToolPanels.css';
 
 interface ElectronAPI {
