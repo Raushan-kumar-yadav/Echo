@@ -1,0 +1,637 @@
+﻿import React, {
+  createContext,
+  useContext,
+  useReducer,
+  useEffect,
+  type Dispatch,
+  type ReactNode,
+} from "react";
+import {
+  type TimelineState,
+  type TimelineAction,
+  type Track,
+  type Clip,
+  type CompTab,
+  MIN_ZOOM,
+  MAX_ZOOM,
+  MIN_TRACK_H,
+  MAX_TRACK_H,
+} from "./types";
+import { setTrackMute, setTrackSolo, setTrackLock } from "../../api/useApi";
+
+// Empty initial state  
+const INITIAL_STATE: TimelineState = {
+  tracks: [],
+  currentFrame: 0,
+  totalFrames: 1800,
+  fps: 30,
+  zoomX: 5,
+  selectedTool: "pointer",
+  isPlaying: false,
+  interaction: null,
+  ghost: null,
+  activeCompId: null,
+  activeCompName: null,
+  compTabStack: [{ compId: null, name: "Main Timeline" }],
+};
+
+//   Helpers
+
+export function mapBackendTrack(t: any, defaultHeight = 64): Track {
+  const isAudio = t.type === "audio" || t.name?.toLowerCase().includes("audio");
+  return {
+    id: t.trackId ?? t.id,
+    name: t.name,
+    height: isAudio ? 48 : defaultHeight,
+    muted: t.muted ?? false,
+    solo: t.solo ?? false,
+    locked: t.locked ?? false,
+    clips: (t.clips ?? []).map(mapBackendClip),
+  };
+}
+
+export function mapBackendTracksPreservingOrder(
+  currentTracks: Track[],
+  backendTracks: any[],
+): Track[] {
+  // Build a clipId → isSelected map from the current (in-memory) state
+  const selectedIds = new Map<string, boolean>();
+  currentTracks.forEach((t) =>
+    t.clips.forEach((c) => selectedIds.set(c.id, c.isSelected)),
+  );
+
+  const mappedById = new Map(
+    backendTracks.map((track) => {
+      const mapped = mapBackendTrack(track);
+      // Restore isSelected for each clip that existed before the refetch
+      mapped.clips = mapped.clips.map((c) => ({
+        ...c,
+        isSelected: selectedIds.get(c.id) ?? false,
+      }));
+      return [mapped.id, mapped] as const;
+    }),
+  );
+  const ordered = currentTracks
+    .map((track) => mappedById.get(track.id))
+    .filter((track): track is Track => Boolean(track));
+  const currentIds = new Set(currentTracks.map((track) => track.id));
+  return ordered.concat(
+    backendTracks
+      .map(mapBackendTrack)
+      .filter((track) => !currentIds.has(track.id)),
+  );
+}
+
+function mapBackendClip(c: any): Clip {
+  const type: Clip["type"] =
+    c.type === "audio"
+      ? "audio"
+      : c.type === "image"
+        ? "image"
+        : c.type === "text"
+          ? "text"
+          : c.type === "solid"
+            ? "solid"
+            : c.type === "shape"
+              ? "shape"
+              : c.type === "lottie"
+                ? "lottie"
+                : c.type === "comp"
+                  ? "comp"
+                  : "video";
+
+  return {
+    id: c.clipId ?? c.id,
+    name: c.name ?? c.compId ?? c.assetId ?? "Clip",
+    startFrame: c.startFrame,
+    duration: c.duration,
+    type,
+    isSelected: false,
+    assetId: c.assetId,
+    compId: c.compId,
+  };
+}
+
+//   Reducer
+function reducer(state: TimelineState, action: TimelineAction): TimelineState {
+  switch (action.type) {
+    //   Backend sync
+    case "SET_TRACKS":
+      return { ...state, tracks: action.tracks };
+
+    case "SET_TOTAL_FRAMES":
+      return { ...state, totalFrames: action.totalFrames };
+
+    case "ADD_CLIP": {
+      const tracks = state.tracks.map((t) => {
+        if (t.id !== action.trackId) return t;
+        // Swap optimistic tmp- clip with real one 
+        const hasTmp = t.clips.some(
+          (c) => c.id.startsWith("tmp-") && c.name === action.clip.name,
+        );
+        const clips = hasTmp
+          ? t.clips.map((c) =>
+              c.id.startsWith("tmp-") && c.name === action.clip.name
+                ? action.clip
+                : c,
+            )
+          : [...t.clips, action.clip].sort(
+              (a, b) => a.startFrame - b.startFrame,
+            );
+        return { ...t, clips };
+      });
+      return { ...state, tracks };
+    }
+
+    //   Playback
+    case "SEEK":
+      return {
+        ...state,
+        currentFrame: Math.max(0, Math.min(action.frame, state.totalFrames)),
+      };
+
+    case "TICK":
+      return {
+        ...state,
+        currentFrame: Math.min(action.frame, state.totalFrames),
+      };
+
+    case "TOGGLE_PLAY":
+      return { ...state, isPlaying: !state.isPlaying };
+
+    case "SET_PLAYING":
+      return { ...state, isPlaying: action.playing };
+
+    case "SET_CURRENT_FRAME":
+      return {
+        ...state,
+        currentFrame: Math.max(0, Math.min(action.frame, state.totalFrames)),
+      };
+
+    //   View
+    case "ZOOM_X":
+      return {
+        ...state,
+        zoomX: Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, action.newZoom)),
+      };
+
+    case "SET_TOOL":
+      return { ...state, selectedTool: action.tool };
+
+    //   Selection
+    case "SELECT_CLIP": {
+      const tracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => ({
+          ...clip,
+          isSelected:
+            clip.id === action.clipId && track.id === action.trackId
+              ? true
+              : action.multi
+                ? clip.isSelected
+                : false,
+        })),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "CLEAR_SELECTION": {
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => ({ ...c, isSelected: false })),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "DESELECT_CLIP": {
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => ({
+          ...c,
+          isSelected: c.id === action.clipId ? false : c.isSelected,
+        })),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "BOX_SELECT_CLIPS": {
+      const { frameStart, frameEnd, additive } = action;
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.map((c) => {
+          const clipEnd = c.startFrame + c.duration;
+          const overlaps = c.startFrame < frameEnd && clipEnd > frameStart;
+          return {
+            ...c,
+            isSelected: overlaps ? true : additive ? c.isSelected : false,
+          };
+        }),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "DELETE_CLIP": {
+      const tracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.filter((c) => c.id !== action.clipId),
+      }));
+      return { ...state, tracks };
+    }
+
+    case "SPLIT_CLIP_DONE": {
+      // Replace the original clip 
+      const { originalClip, rightClip, trackId } = action;
+      const tracks = state.tracks.map((t) => {
+        if (t.id !== trackId) return t;
+        const clips = t.clips
+          .filter((c) => c.id !== originalClip.id)
+          .concat([originalClip, rightClip])
+          .sort((a, b) => a.startFrame - b.startFrame);
+        return { ...t, clips };
+      });
+      return { ...state, tracks };
+    }
+
+    //   Move
+    case "COMMIT_MOVE": {
+      const intr = state.interaction;
+      if (!intr || intr.mode !== "move")
+        return { ...state, interaction: null, ghost: null };
+
+      const { pendingFrameDelta, pendingTrackDelta } = intr;
+      const selected: Array<{ clip: Clip; srcIdx: number }> = [];
+      state.tracks.forEach((t, ti) => {
+        t.clips.forEach((c) => {
+          if (c.isSelected) selected.push({ clip: c, srcIdx: ti });
+        });
+      });
+
+      let newTracks = state.tracks.map((t) => ({
+        ...t,
+        clips: t.clips.filter((c) => !c.isSelected),
+      }));
+
+      selected.forEach(({ clip, srcIdx }) => {
+        const dstIdx = Math.max(
+          0,
+          Math.min(newTracks.length - 1, srcIdx + pendingTrackDelta),
+        );
+        const newStart = Math.max(0, clip.startFrame + pendingFrameDelta);
+        newTracks[dstIdx] = {
+          ...newTracks[dstIdx],
+          clips: [
+            ...newTracks[dstIdx].clips,
+            { ...clip, startFrame: newStart },
+          ],
+        };
+      });
+
+      newTracks = newTracks.map((t) => ({
+        ...t,
+        clips: [...t.clips].sort((a, b) => a.startFrame - b.startFrame),
+      }));
+
+      return { ...state, tracks: newTracks, interaction: null, ghost: null };
+    }
+
+    //   Trim
+    case "TRIM_CLIP": {
+      const { clipId, trackId, side, frameDelta } = action;
+      const tracks = state.tracks.map((track) => {
+        if (track.id !== trackId) return track;
+        return {
+          ...track,
+          clips: track.clips.map((clip) => {
+            if (clip.id !== clipId) return clip;
+            if (side === "left") {
+              const newStart = Math.max(0, clip.startFrame + frameDelta);
+              const newDuration = clip.duration - (newStart - clip.startFrame);
+              return newDuration < 1
+                ? clip
+                : { ...clip, startFrame: newStart, duration: newDuration };
+            }
+            const newDuration = Math.max(1, clip.duration + frameDelta);
+            return { ...clip, duration: newDuration };
+          }),
+        };
+      });
+      return { ...state, tracks };
+    }
+
+    //   Track controls
+    case "TOGGLE_MUTE":
+      setTrackMute(action.trackId).catch(() => {});
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, muted: !t.muted } : t,
+        ),
+      };
+
+    case "TOGGLE_SOLO":
+      setTrackSolo(action.trackId).catch(() => {});
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId
+            ? { ...t, solo: !t.solo }
+            : { ...t, solo: false },
+        ),
+      };
+
+    case "TOGGLE_LOCK":
+      setTrackLock(action.trackId).catch(() => {});
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, locked: !t.locked } : t,
+        ),
+      };
+
+    case "RESIZE_TRACK":
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId
+            ? {
+                ...t,
+                height: Math.max(
+                  MIN_TRACK_H,
+                  Math.min(MAX_TRACK_H, action.height),
+                ),
+              }
+            : t,
+        ),
+      };
+
+    //   Drag interaction
+    case "START_INTERACTION":
+      return { ...state, interaction: action.interaction };
+
+    case "UPDATE_INTERACTION":
+      if (!state.interaction) return state;
+      return {
+        ...state,
+        interaction: {
+          ...state.interaction,
+          pendingFrameDelta: action.pendingFrameDelta,
+          pendingTrackDelta: action.pendingTrackDelta,
+          accumPx: action.accumPx,
+        },
+      };
+
+    case "SET_GHOST":
+      return { ...state, ghost: action.ghost };
+
+    case "END_INTERACTION":
+      return { ...state, interaction: null, ghost: null };
+
+    case "ENTER_COMP": {
+      // Add tab if not already open, then switch to it
+      const alreadyOpen = state.compTabStack.some(t => t.compId === action.compId);
+      const newTabs: CompTab[] = alreadyOpen
+        ? state.compTabStack
+        : [...state.compTabStack, { compId: action.compId, name: action.compName }];
+      return {
+        ...state,
+        activeCompId: action.compId,
+        activeCompName: action.compName,
+        compTabStack: newTabs,
+        tracks: [],
+        currentFrame: 0,
+      };
+    }
+
+    case "EXIT_COMP":
+      return {
+        ...state,
+        activeCompId: null,
+        activeCompName: null,
+        tracks: [],
+        currentFrame: 0,
+      };
+
+    case "SWITCH_COMP_TAB": {
+      // Switch to an already-open tab (null = root)
+      const tab = state.compTabStack.find(t => t.compId === action.compId);
+      if (!tab) return state;
+      return {
+        ...state,
+        activeCompId: action.compId,
+        activeCompName: action.compId === null ? "Main Timeline" : (tab.name),
+        tracks: [],
+        currentFrame: 0,
+      };
+    }
+
+    case "CLOSE_COMP_TAB": {
+      // Close a tab; if it was active, fall back to root
+      const remainingTabs = state.compTabStack.filter(t => t.compId !== action.compId);
+      const wasActive = state.activeCompId === action.compId;
+      return {
+        ...state,
+        compTabStack: remainingTabs.length > 0 ? remainingTabs : [{ compId: null, name: "Main Timeline" }],
+        activeCompId: wasActive ? null : state.activeCompId,
+        activeCompName: wasActive ? null : state.activeCompName,
+        tracks: wasActive ? [] : state.tracks,
+        currentFrame: wasActive ? 0 : state.currentFrame,
+      };
+    }
+
+    default:
+      return state;
+  }
+}
+
+//   Context
+interface TimelineContextValue {
+  state: TimelineState;
+  dispatch: Dispatch<TimelineAction>;
+}
+
+const TimelineCtx = createContext<TimelineContextValue | null>(null);
+
+//   Provider
+export function TimelineProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  // Keep refs so async callbacks always read latest values without stale closures
+  const stateRef = React.useRef<TimelineState>(state);
+  React.useEffect(() => { stateRef.current = state; }, [state]);
+
+  // Track the active comp id in a ref so polling functions see the latest value
+  const activeCompIdRef = React.useRef<string | null>(state.activeCompId);
+  React.useEffect(() => { activeCompIdRef.current = state.activeCompId; }, [state.activeCompId]);
+
+  // ── Sync active comp to backend whenever it changes ──────────────────────
+  // Also immediately fire a fetch so tracks show without waiting for the next poll tick
+  React.useEffect(() => {
+    const port: number = (window as any).__ECHO_PORT__ ?? 8000;
+    const base = `http://127.0.0.1:${port}`;
+    const compId = state.activeCompId ?? 'root';
+
+    // Tell backend which comp is active
+    fetch(`${base}/comps/${compId}/activate`, { method: 'POST' }).catch(() => {});
+
+    // For a comp (non-root): ensure it has tracks before fetching state
+    const ensureAndFetch = async () => {
+      const url = state.activeCompId
+        ? `${base}/comps/${state.activeCompId}/state`
+        : `${base}/timeline/state`;
+
+      if (state.activeCompId) {
+        // ensure tracks exist (idempotent — safe to call every time)
+        await fetch(`${base}/comps/${state.activeCompId}/ensure-tracks`, { method: 'POST' }).catch(() => {});
+      }
+
+      const data = await fetch(url).then(r => r.ok ? r.json() : null).catch(() => null);
+      if (!data) return;
+      const tracks: Track[] = mapBackendTracksPreservingOrder(
+        stateRef.current.tracks,
+        data.tracks ?? [],
+      );
+      dispatch({ type: 'SET_TRACKS', tracks });
+      const tf = data.totalFrames;
+      if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+    };
+
+    ensureAndFetch();
+
+    // Fire a short burst after the switch so we pick up any in-flight changes
+    let count = 0;
+    const url = state.activeCompId
+      ? `${base}/comps/${state.activeCompId}/state`
+      : `${base}/timeline/state`;
+    const burstId = setInterval(() => {
+      count++;
+      if (count >= 5) { clearInterval(burstId); return; }
+      fetch(url)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (!data) return;
+          const tracks: Track[] = mapBackendTracksPreservingOrder(
+            stateRef.current.tracks,
+            data.tracks ?? [],
+          );
+          dispatch({ type: 'SET_TRACKS', tracks });
+          const tf = data.totalFrames;
+          if (tf) dispatch({ type: 'SET_TOTAL_FRAMES', totalFrames: tf });
+        })
+        .catch(() => {});
+    }, 400);
+
+    return () => clearInterval(burstId);
+  }, [state.activeCompId]);
+
+  // Sync multi-selection to backend so AI tools can query all selected clips
+  useEffect(() => {
+    const port: number = (window as any).__ECHO_PORT__ ?? 8000;
+    const selectedIds = state.tracks
+      .flatMap((t) => t.clips.filter((c) => c.isSelected).map((c) => c.id));
+    fetch(`http://127.0.0.1:${port}/clips/select`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        clipId: selectedIds[0] ?? null,
+        selectedIds,
+      }),
+    }).catch(() => {});
+  }, [state.tracks]);
+
+
+  useEffect(() => {
+    // Hoist onFrame so cleanup can always reach it
+    const onFrame = (e: Event) => {
+      const frame = (e as CustomEvent<number>).detail;
+      dispatch({ type: "SET_CURRENT_FRAME", frame });
+    };
+    window.addEventListener("fade:frame", onFrame);
+
+    // Always polls the correct URL for the current active comp
+    function fetchAndSetTracks(port: number, preserveOrder = false) {
+      const activeId = activeCompIdRef.current;
+      const url = activeId
+        ? `http://127.0.0.1:${port}/comps/${activeId}/state`
+        : `http://127.0.0.1:${port}/timeline/state`;
+
+      fetch(url)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!data) return;
+          const backendTracks = data.tracks ?? [];
+          const tracks: Track[] = preserveOrder
+            ? mapBackendTracksPreservingOrder(
+                stateRef.current.tracks,
+                backendTracks,
+              )
+            : backendTracks.map(mapBackendTrack);
+          dispatch({ type: "SET_TRACKS", tracks });
+          if (data.totalFrames)
+            dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
+        })
+        .catch(() => {});
+    }
+
+    function startSync(port: number) {
+      // Listen for track changes from viewport tools
+      const onTracksChanged = () => fetchAndSetTracks(port, true);
+      window.addEventListener("fade:tracks-changed", onTracksChanged);
+
+      // Slow background refresh (tracks rarely change except on edits)
+      const trackRefreshId = setInterval(() => {
+        fetchAndSetTracks(port, true);
+      }, 2000);
+
+      //   Fast poll for playback state
+      const playbackId = setInterval(() => {
+        fetch(`http://127.0.0.1:${port}/playback/state`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            if (!data) return;
+            dispatch({ type: "SET_PLAYING", playing: data.playing });
+            if (data.totalFrames)
+              dispatch({ type: "SET_TOTAL_FRAMES", totalFrames: data.totalFrames });
+          })
+          .catch(() => {});
+      }, 500);
+
+      return () => {
+        clearInterval(trackRefreshId);
+        clearInterval(playbackId);
+        window.removeEventListener("fade:tracks-changed", onTracksChanged);
+      };
+    }
+
+    let cleanupSync: (() => void) | null = null;
+
+    const knownPort: number | null = (window as any).__ECHO_PORT__;
+    if (knownPort) {
+      cleanupSync = startSync(knownPort);
+    } else {
+      const handler = (e: Event) => {
+        cleanupSync = startSync((e as CustomEvent<number>).detail);
+      };
+      window.addEventListener("fade:port", handler, { once: true });
+    }
+
+    return () => {
+      if (cleanupSync) cleanupSync();
+      window.removeEventListener("fade:frame", onFrame);
+    };
+  }, []);
+
+  return (
+    <TimelineCtx.Provider value={{ state, dispatch }}>
+      {children}
+    </TimelineCtx.Provider>
+  );
+}
+
+// Hook
+export function useTimeline(): TimelineContextValue {
+  const ctx = useContext(TimelineCtx);
+  if (!ctx)
+    throw new Error("useTimeline must be used inside <TimelineProvider>");
+  return ctx;
+}
+
+export { frameToTimecode, totalWidth, totalTrackHeight } from "./timelineUtils";
