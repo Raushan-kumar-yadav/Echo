@@ -26,7 +26,7 @@ export default function createProjectModal({onClose , onProjectCreated} : creatM
     const safeFileName = (n:string) =>n.replace(/[<>:"/\\|?*]/g, '_').trim() || 'Untitled Project';
 
     const previewPath = projectFolder
-        ? `${projectFolder}${SEP}${safeFileName(name)}.fade`
+        ? `${projectFolder}${SEP}${safeFileName(name)}.echo`
         : '';
 
 
@@ -52,7 +52,7 @@ export default function createProjectModal({onClose , onProjectCreated} : creatM
         }
 
         setLoading(true);
-        const port = (window as any).__FADE_PORT__ ?? 8000;
+        const port = (window as any).__ECHO_PORT__ ?? 8000;
         const base = `http://127.0.0.1:${port}`;
 
          const mediaDownloadPath = `${projectFolder}${SEP}media`;
@@ -134,12 +134,12 @@ export default function createProjectModal({onClose , onProjectCreated} : creatM
                             <div className="sp-folder-error">{folderError}</div>
                         )}
 
-                        {/* Preview of where .fade will be saved */}
+                        {/* Preview of where .echo will be saved */}
                         {previewPath && (
                             <div className="sp-folder-preview">
                                 <span className="sp-folder-preview__label">Project file:</span>
                                 <span className="sp-folder-preview__path" title={previewPath}>
-                                    {safeFileName(name)}.fade
+                                    {safeFileName(name)}.echo
                                 </span>
                             </div>
                         )}

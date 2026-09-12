@@ -59,7 +59,7 @@ interface GeneratorSettings {
 }
 
 function getPort(): number | null {
-  return (window as any).__FADE_PORT__ ?? null;
+  return (window as any).__ECHO_PORT__ ?? null;
 }
 
 async function fetchSettings(): Promise<Settings | null> {
@@ -631,7 +631,7 @@ export default function SettingsPanel({ onClose }: Props) {
                           <div className="sp-hint sp-hint--warn">
                             {gen.comfyuiPath ? (
                               <>
-                                ⚡ ComfyUI is not running — Fade will start it automatically when you generate an image.
+                                ⚡ ComfyUI is not running — Echo will start it automatically when you generate an image.
                                 <br />
                                 <span style={{ opacity: 0.7, fontSize: 11 }}>Folder: <code>{gen.comfyuiPath}</code></span>
                               </>
