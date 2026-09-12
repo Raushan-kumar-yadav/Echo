@@ -29,7 +29,7 @@ interface MenuItem {
   label?: string;
   shortcut?: string;
   sep?: boolean;
-  action?:   () => void;
+  action?: () => void;
 }
 
 function MenuButton({ label, items }: { label: string; items: MenuItem[] }) {
