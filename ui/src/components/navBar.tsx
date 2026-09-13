@@ -224,7 +224,7 @@ export default function TitleBar({
       <div className="titlebar__left">
         <div className="titlebar__logo">
           <div className="titlebar__logo-dot" />
-          <span>FADE</span>
+          <span>ECHO</span>
         </div>
         <div className="titlebar__menus">
           <MenuButton label="File"  items={fileItems} />
