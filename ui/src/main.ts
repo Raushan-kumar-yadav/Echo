@@ -91,7 +91,13 @@ const createWindow = () => {
     },
   });
 
-
+  // Re-send port if already known when page (re)loads
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (detectedPort !== null) {
+      mainWindow?.webContents.send('backend:port', detectedPort)
+      console.log('[Electron] (re-)sent backend:port', detectedPort, 'after did-finish-load')
+    }
+  })
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -102,31 +108,76 @@ const createWindow = () => {
   }
 };
 
+// ── IPC: Window controls ──
+ipcMain.on('window:minimize', () => mainWindow?.minimize())
+ipcMain.on('window:maximize', () => {
+  mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize()
+})
+ipcMain.on('window:close', () => mainWindow?.close())
 
-// open os file picker 
+// ── IPC: Backend port ──
+ipcMain.handle('backend:get-port', () => detectedPort)
 
-ipcMain.handle('dialog:openFolder',async (event , options) => {
+// ── IPC: Native render engine (no-op stubs — no C++ addon yet) ──
+ipcMain.on('render:seek', () => {})
+ipcMain.on('render:play', () => {})
+ipcMain.on('render:pause', () => {})
+ipcMain.on('render:set-preview-scale', () => {})
+ipcMain.handle('render:get-buffer', () => null)
+ipcMain.handle('render:get-stats', () => null)
+ipcMain.handle('render:is-native', () => false)
 
+// ── IPC: Export (no native engine — use Python fallback) ──
+ipcMain.on('export:start', () => {
+  mainWindow?.webContents.send('export:progress', {
+    frame: 0, total: 0, done: true,
+    error: 'Native render engine not loaded — use Python export fallback'
+  })
+})
+ipcMain.on('export:cancel', () => {})
+
+// ── IPC: File dialogs ──
+ipcMain.handle('dialog:save', async (_event, opts) => {
+  const result = await dialog.showSaveDialog(mainWindow!, opts ?? {})
+  return result.canceled ? undefined : result.filePath
+})
+
+ipcMain.handle('dialog:open', async (_event, opts) => {
+  const result = await dialog.showOpenDialog(mainWindow!, opts ?? {})
+  return result.canceled ? undefined : result.filePaths[0]
+})
+
+ipcMain.handle('dialog:openFolder', async (_event, options) => {
   const result = await dialog.showOpenDialog(options);
-
-  if(!result.canceled && result.filePaths.length > 0){
+  if (!result.canceled && result.filePaths.length > 0) {
     return result.filePaths[0];
   }
-
   return undefined;
 })
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
+ipcMain.handle('app:get-path', (_event, name: string) => {
+  try {
+    return app.getPath(name as any)
+  } catch {
+    return null
+  }
+})
+
+// ── IPC: WebComp (stubs — no offscreen windows yet) ──
+ipcMain.handle('webcomp:create', () => false)
+ipcMain.handle('webcomp:capture-frame', () => null)
+ipcMain.handle('webcomp:prefetch', () => false)
+ipcMain.on('webcomp:update-params', () => {})
+ipcMain.on('webcomp:reload', () => {})
+ipcMain.on('webcomp:destroy', () => {})
+ipcMain.handle('webcomp:push-to-native', () => false)
+
+// ── App lifecycle ──
 app.whenReady().then(() => {
   createWindow()
   startPython()
 })
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
 app.on('window-all-closed', () => {
   appQuitting  = true
   pyKilledByUs = true
@@ -143,6 +194,3 @@ app.on('before-quit', () => {
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow()
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.

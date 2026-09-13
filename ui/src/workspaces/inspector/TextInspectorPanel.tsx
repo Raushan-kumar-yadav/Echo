@@ -13,7 +13,7 @@ async function patchTextStyle(clipId: string, style: Record<string, unknown>) {
     });
     if (r.ok) {
       // Only trigger re-render after the server has confirmed the update
-      window.dispatchEvent(new CustomEvent('fade:render-now'));
+      window.dispatchEvent(new CustomEvent('echo:render-now'));
     }
   } catch {
     // backend not ready

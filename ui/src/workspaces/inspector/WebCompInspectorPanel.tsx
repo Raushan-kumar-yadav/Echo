@@ -33,7 +33,7 @@ async function fetchInfo(clipId: string): Promise<WebCompClipInfo | null> {
 
 async function patchParams(clipId: string, webcompId: string, params: Record<string, any>) {
   // Signal the prefetch loop to pause and discard in-flight captures
-  window.dispatchEvent(new CustomEvent('fade:webcomp-params-changed', {
+  window.dispatchEvent(new CustomEvent('echo:webcomp-params-changed', {
     detail: { webcompId },
   }));
 

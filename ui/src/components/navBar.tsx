@@ -132,7 +132,7 @@ export default function TitleBar({
     const fp = await saveProject(projectName);
     if (fp) {
       savedPathRef.current = fp;
-      const name = fp.split(/[\\/]/).pop()?.replace(/\.fade$/, '') ?? projectName;
+      const name = fp.split(/[\\/]/).pop()?.replace(/\.echo$/, '') ?? projectName;
       setProjectName(name);
     }
   }, [projectName]);

@@ -765,12 +765,12 @@ export default function LibraryPanel({ onAddToTimeline }: {
 
   useEffect(() => {
     if ((window as any).__ECHO_PORT__) refreshAssets();
-    else { const h = () => refreshAssets(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    else { const h = () => refreshAssets(); window.addEventListener('echo:port', h, { once: true }); return () => window.removeEventListener('echo:port', h); }
   }, [refreshAssets]);
   useEffect(() => {
     const h = () => refreshAssets();
-    window.addEventListener('fade:library-changed', h);
-    return () => window.removeEventListener('fade:library-changed', h);
+    window.addEventListener('echo:library-changed', h);
+    return () => window.removeEventListener('echo:library-changed', h);
   }, [refreshAssets]);
 
   // Subscribe to job SSE events  
@@ -785,8 +785,8 @@ export default function LibraryPanel({ onAddToTimeline }: {
       });
       if (job.status === 'done') refreshAssets();
     };
-    window.addEventListener('fade:job-update', handleJob);
-    return () => window.removeEventListener('fade:job-update', handleJob);
+    window.addEventListener('echo:job-update', handleJob);
+    return () => window.removeEventListener('echo:job-update', handleJob);
   }, [refreshAssets]);
 
   const dismissJob = useCallback((jobId: string) => {
@@ -876,12 +876,12 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, []);
   useEffect(() => {
     if ((window as any).__ECHO_PORT__) refreshComps();
-    else { const h = () => refreshComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    else { const h = () => refreshComps(); window.addEventListener('echo:port', h, { once: true }); return () => window.removeEventListener('echo:port', h); }
   }, [refreshComps]);
   useEffect(() => {
     const h = () => refreshComps();
-    window.addEventListener('fade:comps-changed', h);
-    return () => window.removeEventListener('fade:comps-changed', h);
+    window.addEventListener('echo:comps-changed', h);
+    return () => window.removeEventListener('echo:comps-changed', h);
   }, [refreshComps]);
 
   //   Load webcomps
@@ -890,12 +890,12 @@ export default function LibraryPanel({ onAddToTimeline }: {
   }, []);
   useEffect(() => {
     if ((window as any).__ECHO_PORT__) refreshWebComps();
-    else { const h = () => refreshWebComps(); window.addEventListener('fade:port', h, { once: true }); return () => window.removeEventListener('fade:port', h); }
+    else { const h = () => refreshWebComps(); window.addEventListener('echo:port', h, { once: true }); return () => window.removeEventListener('echo:port', h); }
   }, [refreshWebComps]);
   useEffect(() => {
     const h = () => refreshWebComps();
-    window.addEventListener('fade:webcomps-changed', h);
-    return () => window.removeEventListener('fade:webcomps-changed', h);
+    window.addEventListener('echo:webcomps-changed', h);
+    return () => window.removeEventListener('echo:webcomps-changed', h);
   }, [refreshWebComps]);
 
   //   Asset handlers  
@@ -1079,7 +1079,7 @@ export default function LibraryPanel({ onAddToTimeline }: {
                         if (!asset) return;
                         const frame = state.currentFrame ?? 0;
                         await addClipToTimeline(hit.assetId, 0, frame, dur, inFrames);
-                        window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+                        window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
                       }}
                       title={hit.text}
                     >

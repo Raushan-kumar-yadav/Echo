@@ -55,8 +55,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
 
   React.useEffect(() => {
     fetchTransitions();
-    window.addEventListener('fade:transition-changed', fetchTransitions);
-    return () => window.removeEventListener('fade:transition-changed', fetchTransitions);
+    window.addEventListener('echo:transition-changed', fetchTransitions);
+    return () => window.removeEventListener('echo:transition-changed', fetchTransitions);
   }, [fetchTransitions]);
 
   
@@ -249,8 +249,8 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             trackId:  bestA._trackId,
           });
           // Dispatch both events so the transition list  
-          window.dispatchEvent(new CustomEvent('fade:transition-changed'));
-          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('echo:transition-changed'));
+          window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
         } catch (err) {
           console.error('[TrackRow] Add transition error:', err);
         }
@@ -332,7 +332,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
           dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
           // Signal useWebCompSync to create  
-          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
         } else {
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
         }
@@ -378,7 +378,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
             type: optimisticClip.type,
             isSelected: false,
           }});
-          window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+          window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
         } else {
           // API returned null — rollback
           dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });
@@ -434,7 +434,7 @@ const TrackRow = memo(function TrackRow({ track, trackIndex, scrollLeft = 0 }: P
         dispatch({ type: 'ADD_CLIP', trackId: track.id, clip: realClip });
       }
       // Always notify so AudioEngine reloads its clip list 
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
     } catch (err) {
       console.error('[TrackRow] addClipToTimeline failed:', err);
       dispatch({ type: 'DELETE_CLIP', clipId: optimisticClip.id });

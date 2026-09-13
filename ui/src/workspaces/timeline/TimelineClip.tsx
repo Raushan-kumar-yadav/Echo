@@ -122,7 +122,7 @@ const TimelineClip = memo(function TimelineClip({
       const port = (window as any).__ECHO_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/timeline/clips/${clip.id}`, { method: 'DELETE' });
       dispatch({ type: 'DELETE_CLIP', clipId: clip.id });
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
     } catch (err) {
       console.error('[TimelineClip] delete failed', err);
     }
@@ -404,7 +404,7 @@ const TimelineClip = memo(function TimelineClip({
       // Select this clip so inspector shows the new effect
       dispatch({ type: 'SELECT_CLIP', clipId: clip.id, trackId: track.id, multi: false });
       setSelected({ type: 'clip', clipId: clip.id, clipName: clip.name, clipType: clip.type, trackIndex });
-      window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clip.id }));
+      window.dispatchEvent(new CustomEvent('echo:effects-changed', { detail: clip.id }));
     } catch (err) {
       console.error('[TimelineClip] effect drop failed', err);
     }

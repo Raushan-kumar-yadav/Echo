@@ -365,7 +365,7 @@ input[type="color"] {
   border-color: #ef4444;
 }
 
-/*   Toolbar tool buttons (TitleBar)   */
+  
 .tb-tool-group {
   display: flex;
   align-items: center;

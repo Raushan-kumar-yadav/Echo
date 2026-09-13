@@ -1,21 +1,31 @@
-// Receive dynamic port from Electron main process (spawned Python backend)
+// Bootstrap __ECHO_PORT__ — mirrors Fade's exact pattern:
+// 1. Pull: ask main for port immediately (handles race where port was known before renderer loaded)
+// 2. Push: listen for future port announcements (normal startup flow)
+function applyPort(port: number) {
+  if (port && !(window as any).__ECHO_PORT__) {
+    ;(window as any).__ECHO_PORT__ = port
+    console.log('[useApi] backend port:', port)
+    window.dispatchEvent(new CustomEvent('echo:port', { detail: port }))
+  }
+}
+
 if (typeof window !== 'undefined') {
   const api = (window as any).electronAPI
-  if (api?.onBackendPort) {
-    api.onBackendPort((port: number) => {
-      console.log('[useApi] backend port received:', port)
-      ;(window as any).__ECHO_PORT__ = port
-    })
+  if (api) {
+    // Pull — works even if Python was already up before renderer loaded
+    api.getPort?.().then((p: number | null) => { if (p) applyPort(p) })
+    // Push — normal flow
+    api.onBackendPort?.((p: number) => applyPort(p))
   }
 }
 
 function base(): string {
-  const port = (window as any).__ECHO_PORT__ ?? 8080;
+  const port = (window as any).__ECHO_PORT__ ?? 8000;
   return `http://127.0.0.1:${port}`;
 }
 
 function wsBase(): string {
-  const port = (window as any).__ECHO_PORT__ ?? 8080;
+  const port = (window as any).__ECHO_PORT__ ?? 8000;
   return `ws://127.0.0.1:${port}`;
 }
 

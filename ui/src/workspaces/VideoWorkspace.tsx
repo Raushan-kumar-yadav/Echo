@@ -127,7 +127,7 @@ export default function VideoWorkspace() {
         {/* AI Director toggle button */}
         <button
           className="video-ws__ai-btn"
-          onClick={() => window.dispatchEvent(new CustomEvent('fade:ai-toggle'))}
+          onClick={() => window.dispatchEvent(new CustomEvent('echo:ai-toggle'))}
           title="Toggle AI Director"
         >
           🤖

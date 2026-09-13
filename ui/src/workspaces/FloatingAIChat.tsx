@@ -98,8 +98,8 @@ function usePort(): number {
   const [port, setPort] = useState<number>((window as any).__ECHO_PORT__ ?? 8000)
   useEffect(() => {
     const h = (e: Event) => setPort((e as CustomEvent<number>).detail)
-    window.addEventListener('fade:port', h, { once: true })
-    return () => window.removeEventListener('fade:port', h)
+    window.addEventListener('echo:port', h, { once: true })
+    return () => window.removeEventListener('echo:port', h)
   }, [])
   return port
 }
@@ -113,8 +113,8 @@ function SelectedClipBadge() {
       const d = (e as CustomEvent).detail
       setClip(d?.clipId ? d : null)
     }
-    window.addEventListener('fade:clip-selected', h)
-    return () => window.removeEventListener('fade:clip-selected', h)
+    window.addEventListener('echo:clip-selected', h)
+    return () => window.removeEventListener('echo:clip-selected', h)
   }, [])
   if (!clip) return null
   return (
@@ -251,11 +251,11 @@ export default function FloatingAIChat({ onClose }: Props) {
 
   const dispatchToolEvents = useCallback((toolName: string) => {
     if (TIMELINE_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+      window.dispatchEvent(new CustomEvent('echo:tracks-changed'))
     if (LIBRARY_TOOLS.has(toolName))
-      window.dispatchEvent(new CustomEvent('fade:library-changed'))
+      window.dispatchEvent(new CustomEvent('echo:library-changed'))
     if (toolName.includes('effect'))
-      window.dispatchEvent(new CustomEvent('fade:effects-changed'))
+      window.dispatchEvent(new CustomEvent('echo:effects-changed'))
   }, [])
 
   async function send() {
@@ -320,7 +320,7 @@ export default function FloatingAIChat({ onClose }: Props) {
               if (evt.name === 'export_video' && typeof evt.content === 'string') {
                 const m = evt.content.match(/EXPORT_JOB_ID:([\w-]+)/)
                 if (m) {
-                  window.dispatchEvent(new CustomEvent('fade:export-started', { detail: { jobId: m[1] } }))
+                  window.dispatchEvent(new CustomEvent('echo:export-started', { detail: { jobId: m[1] } }))
                 }
               }
 

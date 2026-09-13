@@ -307,15 +307,15 @@ export default function EffectsPanel() {
       const targetId = (e as CustomEvent<string>).detail
       if (!targetId || targetId === clipId) loadApplied()
     }
-    window.addEventListener('fade:effects-changed', handler)
-    return () => window.removeEventListener('fade:effects-changed', handler)
+    window.addEventListener('echo:effects-changed', handler)
+    return () => window.removeEventListener('echo:effects-changed', handler)
   }, [clipId, loadApplied])
 
   async function applyEffect(effectType: string) {
     if (!clipId) return
     await effectsApi.add(clipId, effectType)
     loadApplied()
-    window.dispatchEvent(new CustomEvent('fade:effects-changed', { detail: clipId }))
+    window.dispatchEvent(new CustomEvent('echo:effects-changed', { detail: clipId }))
   }
 
   const categories = useMemo(

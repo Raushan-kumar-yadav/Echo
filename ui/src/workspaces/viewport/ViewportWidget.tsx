@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
@@ -59,7 +59,7 @@ export default function ViewportWidget() {
   const [totalFrames,  setTotalFrames]  = useState(1800);
   const [fps, setFps] = useState(30);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [connected, setConnected] = useState(true);  // HTTP mode is always "connected"
   const [retryCount, setRetryCount]   = useState(0);
   const [resScale, setResScale] = useState<number>(0.5);
   const [previewFormat, setPreviewFormat] = useState<'jpeg' | 'png'>('png');
@@ -133,7 +133,7 @@ export default function ViewportWidget() {
       ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
 
       frameNumRef.current = frameNum;
-      window.dispatchEvent(new CustomEvent('fade:frame', { detail: frameNum }));
+      window.dispatchEvent(new CustomEvent('echo:frame', { detail: frameNum }));
       audioRef.current?.tick(frameNum);
 
       if (frameNum !== lastStateFrameRef.current) {
@@ -180,13 +180,13 @@ export default function ViewportWidget() {
 
     // Also react to track changes
     const onTracksChanged = () => loadClips(currentPort)
-    window.addEventListener('fade:tracks-changed', onTracksChanged)
-    window.addEventListener('fade:render-now', onTracksChanged)
+    window.addEventListener('echo:tracks-changed', onTracksChanged)
+    window.addEventListener('echo:render-now', onTracksChanged)
 
     return () => {
       clearInterval(portPollId)
-      window.removeEventListener('fade:tracks-changed', onTracksChanged)
-      window.removeEventListener('fade:render-now', onTracksChanged)
+      window.removeEventListener('echo:tracks-changed', onTracksChanged)
+      window.removeEventListener('echo:render-now', onTracksChanged)
       engine.destroy()
       audioRef.current = null
     }
@@ -218,8 +218,8 @@ export default function ViewportWidget() {
       startPolling(knownPort);
     } else {
       const handler = (e: Event) => startPolling((e as CustomEvent<number>).detail);
-      window.addEventListener('fade:port', handler, { once: true });
-      return () => { window.removeEventListener('fade:port', handler); };
+      window.addEventListener('echo:port', handler, { once: true });
+      return () => { window.removeEventListener('echo:port', handler); };
     }
 
     return () => { if (id) clearInterval(id); };
@@ -233,8 +233,8 @@ export default function ViewportWidget() {
       playbackSeek(f).catch(() => {});
       if (isNativeRender) api?.renderSeek(f);
     };
-    window.addEventListener('fade:render-now', handler);
-    return () => window.removeEventListener('fade:render-now', handler);
+    window.addEventListener('echo:render-now', handler);
+    return () => window.removeEventListener('echo:render-now', handler);
   }, [isNativeRender]);
 
   //   Controls  

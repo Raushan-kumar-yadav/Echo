@@ -19,7 +19,7 @@ const TrackHeaders = memo(function TrackHeaders({ scrollTop, totalTrackHeightPx 
     try {
       await addTrack(type);
       // TimelineContext already listens to this event to refetch
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
     } finally {
       setAdding(false);
     }

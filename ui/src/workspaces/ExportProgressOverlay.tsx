@@ -96,9 +96,9 @@ export default function ExportProgressOverlay() {
       }, 500)
     }
 
-    window.addEventListener('fade:export-started', handler)
+    window.addEventListener('echo:export-started', handler)
     return () => {
-      window.removeEventListener('fade:export-started', handler)
+      window.removeEventListener('echo:export-started', handler)
       stopPoll()
       if (dismissRef.current) clearTimeout(dismissRef.current)
     }

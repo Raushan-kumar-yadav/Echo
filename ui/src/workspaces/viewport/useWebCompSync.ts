@@ -75,11 +75,11 @@ export function useWebCompSync() {
         }
       }
     };
-    window.addEventListener('fade:frame', onFrame);
-    window.addEventListener('fade:seek',  onFrame);
+    window.addEventListener('echo:frame', onFrame);
+    window.addEventListener('echo:seek',  onFrame);
     return () => {
-      window.removeEventListener('fade:frame', onFrame);
-      window.removeEventListener('fade:seek',  onFrame);
+      window.removeEventListener('echo:frame', onFrame);
+      window.removeEventListener('echo:seek',  onFrame);
     };
   }, []);
 
@@ -89,13 +89,13 @@ export function useWebCompSync() {
       for (const set of pushedRef.current.values()) set.clear();
     
     };
-    window.addEventListener('fade:seek',  onReset);
-    window.addEventListener('fade:stop',  onReset);
-    window.addEventListener('fade:reset', onReset);
+    window.addEventListener('echo:seek',  onReset);
+    window.addEventListener('echo:stop',  onReset);
+    window.addEventListener('echo:reset', onReset);
     return () => {
-      window.removeEventListener('fade:seek',  onReset);
-      window.removeEventListener('fade:stop',  onReset);
-      window.removeEventListener('fade:reset', onReset);
+      window.removeEventListener('echo:seek',  onReset);
+      window.removeEventListener('echo:stop',  onReset);
+      window.removeEventListener('echo:reset', onReset);
     };
   }, []);
 
@@ -118,8 +118,8 @@ export function useWebCompSync() {
 
       console.log(`[WebCompSync] params changed (gen=${generationRef.current}), settle ${PARAMS_SETTLE_MS}ms`);
     };
-    window.addEventListener('fade:webcomp-params-changed', onParamsChange);
-    return () => window.removeEventListener('fade:webcomp-params-changed', onParamsChange);
+    window.addEventListener('echo:webcomp-params-changed', onParamsChange);
+    return () => window.removeEventListener('echo:webcomp-params-changed', onParamsChange);
   }, []);
 
  
@@ -348,12 +348,12 @@ export function useWebCompSync() {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => { syncWindows(); }, 100);
     };
-    window.addEventListener('fade:tracks-changed',   handler);
-    window.addEventListener('fade:timeline-changed',  handler);  // SSE from backend
+    window.addEventListener('echo:tracks-changed',   handler);
+    window.addEventListener('echo:timeline-changed',  handler);  // SSE from backend
     return () => {
       if (timer) clearTimeout(timer);
-      window.removeEventListener('fade:tracks-changed',   handler);
-      window.removeEventListener('fade:timeline-changed',  handler);
+      window.removeEventListener('echo:tracks-changed',   handler);
+      window.removeEventListener('echo:timeline-changed',  handler);
     };
   }, []);
 
