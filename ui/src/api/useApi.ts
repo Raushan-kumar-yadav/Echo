@@ -1,12 +1,21 @@
- 
+// Receive dynamic port from Electron main process (spawned Python backend)
+if (typeof window !== 'undefined') {
+  const api = (window as any).electronAPI
+  if (api?.onBackendPort) {
+    api.onBackendPort((port: number) => {
+      console.log('[useApi] backend port received:', port)
+      ;(window as any).__ECHO_PORT__ = port
+    })
+  }
+}
 
 function base(): string {
-  const port = (window as any).__ECHO_PORT__ ?? 8000;
+  const port = (window as any).__ECHO_PORT__ ?? 8080;
   return `http://127.0.0.1:${port}`;
 }
 
 function wsBase(): string {
-  const port = (window as any).__ECHO_PORT__ ?? 8000;
+  const port = (window as any).__ECHO_PORT__ ?? 8080;
   return `ws://127.0.0.1:${port}`;
 }
 

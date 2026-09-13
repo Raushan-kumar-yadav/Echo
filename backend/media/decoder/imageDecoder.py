@@ -1,0 +1,48 @@
+from __future__ import annotations
+from backend.media.decoder.baseDecoder import BaseDecoder
+from backend.media.decoder.decodedFrame import DecodedFrame
+
+
+class ImageDecoder(BaseDecoder):
+     
+    fps: float = 0.0
+
+    def __init__(self, filepath: str) -> None:
+        super().__init__(filepath)
+        self._cached: DecodedFrame | None = None
+
+    def decodeFrame(self, frame: int) -> DecodedFrame | None:
+        # Static image 
+        if self._cached is not None:
+            return self._cached
+
+        try:
+            from PIL import Image
+            import numpy as np
+
+            img  = Image.open(self.filepath).convert("RGBA")
+            arr  = np.array(img, dtype=np.uint8)
+
+            # Swap R↔B channels: RGBA 
+            arr[:, :, [0, 2]] = arr[:, :, [2, 0]]
+            raw = arr.tobytes()
+
+            self._cached = DecodedFrame(
+                frameNumber = 0,
+                width = img.width,
+                height = img.height,
+                dataRGBA = raw,   # actually BGRA 
+                valid = True,
+            )
+            print(f"[ImageDecoder] Decoded {self.filepath} ({img.width}×{img.height})", flush=True)
+            return self._cached
+        except Exception as e:
+            print(f"[ImageDecoder] Failed to load {self.filepath}: {e}")
+            return None
+
+    def getDurationFrames(self) -> int:
+        return 1   # images are 1 frame
+
+    def close(self) -> None:
+        self._cached = None
+

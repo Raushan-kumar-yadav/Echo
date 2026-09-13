@@ -51,15 +51,15 @@ function Ring({ progress, active, hasError }: { progress: number; active: boolea
 
 function jobTypeLabel(type: string): string {
   switch (type) {
-    case 'waveform':       return '〿 Waveform';
-    case 'whisper':        return '🎙 Transcribe';
+    case 'waveform': return '〿 Waveform';
+    case 'whisper': return '🎙 Transcribe';
     case 'video_download': return '⬇ Download Video';
     case 'image_download': return '⬇ Download Image';
     case 'image_generate': return '🎨 Generate Image';
-    case 'tts_generate':   return '🔊 Generate TTS';
-    case 'video_index':    return '🔍 Index Video';
-    case 'image_index':    return '🔍 Index Image';
-    default:               return type.replace(/_/g, ' ');
+    case 'tts_generate': return '🔊 Generate TTS';
+    case 'video_index': return '🔍 Index Video';
+    case 'image_index': return '🔍 Index Image';
+    default: return type.replace(/_/g, ' ');
   }
 }
 

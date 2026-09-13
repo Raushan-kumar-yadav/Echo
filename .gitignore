@@ -1,0 +1,43 @@
+# Node / Electron
+node_modules
+dist
+dist-electron
+
+# Python
+.venv
+*.pyc
+__pycache__
+
+# C++ build output
+renderer/build
+native/build
+
+# C++ precompiled dependencies  
+renderer/deps/skia/lib/
+renderer/deps/ffmpeg/lib/
+renderer/deps/ffmpeg/bin/
+
+# Large binary files
+*.lib
+*.dll
+*.dll.a
+*.pdb
+*.obj
+*.node
+*.pt
+
+# Specific large files
+backend/ai/whisper_models/small.pt
+
+# Generated / scratch
+Fade_Architecture_Blueprint.pdf
+*.pdf
+.env
+.env.local
+
+tools/ffmpeg/
+
+Fade_Architecture_PPT_Notes.md
+
+# AI Models  
+AIModels/
