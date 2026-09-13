@@ -1,7 +1,7 @@
-﻿import { useState, useEffect, useCallback } from 'react'
-import TitleBar from './components/TitleBar'
-import SettingsPanel from './components/SettingsPanel'
-import CreateProjectModal from './components/createProjectModal.'
+import { useState, useEffect, useCallback } from 'react'
+import TitleBar from './components/navBar'
+import SettingsPanel from './components/settingPannel'
+import CreateProjectModal from './components/createProjectModal'
 import HomeWorkspace from './workspaces/HomeWorkspace'
 import AIWorkspace from './workspaces/AIWorkspace'
 import VideoWorkspace from './workspaces/VideoWorkspace'
@@ -13,7 +13,7 @@ import { SelectionContext, type SelectedItem } from './context/selectionContext'
 import ToolboxWidget from './workspaces/tools/ToolboxWidget'
 import FloatingAIChat from './workspaces/FloatingAIChat'
 import ExportProgressOverlay from './workspaces/ExportProgressOverlay'
-import { useLibrarySSE }  from './api/useLibrarySSE'
+import { useLibrarySSE } from './api/useLibrarySSE'
 import './App.css'
 
 type TabId = 'home' | 'ai' | 'video' | 'audio' | 'export'
@@ -73,7 +73,7 @@ function MediaOfflineBanner({
     });
     if (r.ok) {
       onRelinked(a.assetId);
-      window.dispatchEvent(new CustomEvent('fade:tracks-changed'));
+      window.dispatchEvent(new CustomEvent('echo:tracks-changed'));
     }
   };
   return (
@@ -134,8 +134,8 @@ export default function App() {
   // Any workspace can dispatch ' 
   useEffect(() => {
     const h = () => setAiOpen(v => !v)
-    window.addEventListener('fade:ai-toggle', h)
-    return () => window.removeEventListener('fade:ai-toggle', h)
+    window.addEventListener('echo:ai-toggle', h)
+    return () => window.removeEventListener('echo:ai-toggle', h)
   }, [])
 
   // Auto-show on AI tab 
@@ -153,7 +153,7 @@ export default function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clipId }),
     }).catch(() => {})
-    window.dispatchEvent(new CustomEvent('fade:clip-selected', {
+    window.dispatchEvent(new CustomEvent('echo:clip-selected', {
       detail: item?.type === 'clip' ? {
         clipId: item.clipId,
         trackIndex: item.trackIndex,
@@ -181,11 +181,11 @@ export default function App() {
       if (e.key === 'z' && !e.shiftKey) {
         e.preventDefault()
         await fetch(`${base}/history/undo`, { method: 'POST' })
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+        window.dispatchEvent(new CustomEvent('echo:tracks-changed'))
       } else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) {
         e.preventDefault()
         await fetch(`${base}/history/redo`, { method: 'POST' })
-        window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+        window.dispatchEvent(new CustomEvent('echo:tracks-changed'))
       }
     }
     window.addEventListener('keydown', onKey)
@@ -197,9 +197,9 @@ export default function App() {
     setLoadingMsg(null)
     setOfflineAssets(result.missing_assets ?? [])
     setActiveTab('video')
-    window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
-    window.dispatchEvent(new CustomEvent('fade:library-changed'))   // refresh library panel
-    window.dispatchEvent(new CustomEvent('fade:project-loaded', { detail: result }))
+    window.dispatchEvent(new CustomEvent('echo:tracks-changed'))
+    window.dispatchEvent(new CustomEvent('echo:library-changed'))
+    window.dispatchEvent(new CustomEvent('echo:project-loaded', { detail: result }))
   }, [])
 
   // Expose a way for TitleBar  
@@ -271,7 +271,7 @@ export default function App() {
               onProjectCreated={() => {
                 setShowNewProject(false)
                 setActiveTab('video')
-                window.dispatchEvent(new CustomEvent('fade:tracks-changed'))
+                window.dispatchEvent(new CustomEvent('echo:tracks-changed'))
               }}
             />
           )}

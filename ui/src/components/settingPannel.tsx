@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import './SettingsPanel.css';
+import './settingPannel.css';
 
 //   Types  
 
