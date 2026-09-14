@@ -1,13 +1,34 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
+import shutil
 import subprocess
 import threading
+import time
 import uuid
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from backend.compositor.compositor import Compositor
     from backend.timeline.timeline import Timeline
+
+
+def _safe_rename(src: str, dst: str, retries: int = 5, delay: float = 0.3) -> None:
+    """Rename src → dst with retries for Windows WinError 32 (file still held open)."""
+    for attempt in range(retries):
+        try:
+            os.replace(src, dst)  # os.replace is atomic and overwrites dst
+            return
+        except OSError:
+            if attempt < retries - 1:
+                time.sleep(delay)
+            else:
+                # Last resort: copy then delete
+                shutil.copy2(src, dst)
+                try:
+                    os.remove(src)
+                except OSError:
+                    pass
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -242,10 +263,9 @@ def _mux_audio_v2(
                 "volume": volume,
             })
 
-    # No audio  
-    if not audio_clips:
-        os.rename(video_path, out_path)
-        return
+    # No audio
+    _safe_rename(video_path, out_path)
+    return
 
     # Build FFmpeg command with complex filter graph
     inputs = ["-i", video_path]
@@ -299,10 +319,10 @@ def _mux_audio_v2(
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        # Fallback 
+        # Fallback
         print(f"[encoder] _mux_audio_v2 failed: {result.stderr.decode(errors='replace')[-400:]}")
         try:
-            os.rename(video_path, out_path)
+            _safe_rename(video_path, out_path)
         except Exception:
             pass
 

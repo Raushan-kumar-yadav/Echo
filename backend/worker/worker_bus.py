@@ -21,7 +21,7 @@ class WorkerBus:
         self._running = False
          
         self._waveform_pool = ThreadPoolExecutor(
-            max_workers=3, thread_name_prefix="FadeWaveform"
+            max_workers=3, thread_name_prefix="EchoWaveform"
         )
         self._watchdog_thread: Optional[threading.Thread] = None
 

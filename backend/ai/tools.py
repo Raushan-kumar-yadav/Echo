@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import json
 import os
@@ -14,6 +14,8 @@ def _base() -> str:
 
 def _get(path: str) -> dict:
     r = httpx.get(f"{_base()}{path}", timeout=10)
+    if r.status_code == 404:
+        return None  # caller should handle missing resource gracefully
     r.raise_for_status()
     return r.json()
 
@@ -1899,7 +1901,16 @@ def get_asset_context(asset_id: str, format: str = "txt") -> str:
         asset_id: The assetId from the library (get from get_library).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/asset/{asset_id}?format={format}")
+    try:
+        r = _get(f"/asset/{asset_id}?format={format}")
+    except Exception as e:
+        return f"[get_asset_context] Request failed: {e}"
+    if r is None:
+        return (
+            f"Asset '{asset_id}' has no indexed context yet. "
+            "It may still be indexing — check get_index_status(asset_id) "
+            "and wait until status is 'done' before calling this tool."
+        )
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
