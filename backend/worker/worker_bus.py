@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-import multiprocessing
+import queue
 import threading
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -13,13 +13,16 @@ from backend.worker import index_cache
 
 class WorkerBus:
     def __init__(self) -> None:
-        self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()   
-        self._process:  Optional[multiprocessing.Process] = None
+        # Use stdlib queue.Queue (thread-safe) instead of multiprocessing.Queue.
+        # multiprocessing.Queue uses OS pipes + DuplicateHandle, which fails
+        # with WinError 5 when Python is a child of Electron on Windows.
+        self._job_queue:    queue.Queue = queue.Queue()
+        self._result_queue: queue.Queue = queue.Queue()
+        self._cancel_queue: queue.Queue = queue.Queue()
+        self._process:  Optional[threading.Thread] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
-         
+
         self._waveform_pool = ThreadPoolExecutor(
             max_workers=3, thread_name_prefix="EchoWaveform"
         )
@@ -32,19 +35,10 @@ class WorkerBus:
         import sys
         parent_syspath = sys.path[:]
 
-        if getattr(sys, "frozen", False):
-            # Packaged exe (PyInstaller): sys.executable is the frozen app itself.
-            # multiprocessing must use it so the child re-enters the frozen bootloader.
-            multiprocessing.set_executable(sys.executable)
-            multiprocessing.freeze_support()
-        # Dev (venv): sys.executable is already the venv python.exe — no action needed.
-        # Do NOT call set_executable() in dev: pointing it at sys.exec_prefix/python.exe
-        # can resolve to the system Python instead of the venv, causing WinError 5
-        # (Access Denied) on DuplicateHandle during spawn.
-
         self._running = True
-        ctx = multiprocessing.get_context("spawn")
-        self._process = ctx.Process(
+        # Use a thread instead of a subprocess to avoid Windows
+        # DuplicateHandle/WinError 5 when Electron spawns Python.
+        self._process = threading.Thread(
             target=sandbox_worker.worker_main,
             args=(self._job_queue, self._result_queue, self._cancel_queue, parent_syspath),
             daemon=True,
@@ -66,6 +60,7 @@ class WorkerBus:
             name="EchoWorkerWatchdog",
         )
         self._watchdog_thread.start()
+
         print("[WorkerBus] sandbox worker started", flush=True)
 
     def submit(self, job: dict) -> None:
@@ -83,22 +78,19 @@ class WorkerBus:
             pass
         if self._process:
             self._process.join(timeout=5)
-            if self._process.is_alive():
-                self._process.terminate()
         self._waveform_pool.shutdown(wait=False)
         print("[WorkerBus] stopped", flush=True)
 
     def _watchdog(self) -> None:
-        """Restart the sandbox process if it dies unexpectedly."""
+        """Restart the sandbox thread if it dies unexpectedly."""
         import time
         while self._running:
             time.sleep(10)
             if not self._running:
                 break
             if self._process and not self._process.is_alive():
-                exit_code = self._process.exitcode
                 print(
-                    f"[WorkerBus] sandbox process died (exit={exit_code}) — restarting",
+                    "[WorkerBus] sandbox thread died — restarting",
                     flush=True,
                 )
                 self.start()

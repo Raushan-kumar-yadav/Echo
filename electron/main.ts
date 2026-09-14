@@ -130,8 +130,7 @@ function sendPort(port: number) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('backend:port', port)
   }
-  // Initialize native render engine once Python is ready
-  initRenderEngine(port)
+  // NOTE: initRenderEngine is called later, once TCP server is confirmed up
 }
 
 // Python backend  
@@ -154,26 +153,20 @@ function startPython(): void {
     },
   })
 
-  let _pendingPort: number | null = null  // HTTP port detected, waiting for TCP
+  let _pendingPort: number | null = null
 
   pyProcess.stdout?.on('data', (d: Buffer) => {
     const line = d.toString().trim()
     console.log('[PY]', line)
 
-     
-    const portMatch = line.match(/starting on port (\d+)/)
-    if (portMatch) {
-      const port = parseInt(portMatch[1], 10)
-      detectedPort = port
-      _pendingPort = port
-       
-      if (mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send('backend:port', port)
-      }
+    // Phase 1: detect HTTP port, tell frontend
+    const m = line.match(/starting on port (\d+)/)
+    if (m) {
+      _pendingPort = parseInt(m[1], 10)
+      sendPort(_pendingPort)
     }
 
-    // init cpp 
- 
+    // Phase 2: once TCP frame server is up, init C++ renderer
     if (_pendingPort && line.includes('Frame server listening')) {
       initRenderEngine(_pendingPort)
       _pendingPort = null
@@ -194,7 +187,7 @@ function startPython(): void {
     detectedPort  = null
     if (!wasIntentional && code !== 0) {
       console.log('[PY] crashed — killing stale port holders then restarting in 3 s…')
-      // Kill any process still holding port 8000 (Windows TIME_WAIT can linger)
+       
       try {
         const { execSync } = require('child_process')
         for (let p = 8000; p <= 8005; p++) {
@@ -270,7 +263,7 @@ ipcMain.on('render:pause', () => renderEngine?.pause())
 ipcMain.handle('render:get-buffer', () => renderEngine?.getSharedBuffer() ?? null)
 ipcMain.handle('render:get-stats',  () => renderEngine?.getStats() ?? null)
 ipcMain.handle('render:is-native',  () => renderEngine !== null)
-// Keep JS scale tracker in sync when the renderer process sets preview scale
+ 
 ipcMain.on('render:set-preview-scale', (_, scale: number) => {
   if (renderEngine) {
     currentPreviewScale = renderEngine.setPreviewScale(scale)
@@ -378,13 +371,13 @@ ipcMain.on('export:start', async (_event, config) => {
         }>
         const assetMap = new Map(assetList.map(a => [a.assetId, a]))
 
-        // Populate hoisted wcExportClips so the export loop can do JIT pushes
+ 
         for (const clip of clips) {
           const asset = assetMap.get(clip.webcompId)
           wcExportClips.push({
-            webcompId:   clip.webcompId,
+            webcompId: clip.webcompId,
             startFrame:  clip.startFrame,
-            endFrame:    clip.endFrame,
+            endFrame: clip.endFrame,
             mediaOffset: clip.mediaOffset,
             width:  asset?.width  ?? config.width  ?? 1920,
             height: asset?.height ?? config.height ?? 1080,
