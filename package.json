@@ -56,6 +56,11 @@
             {
                 "from": ".env",
                 "to": ".env"
+            },
+            {
+                "from": "AIModels",
+                "to": "AIModels",
+                "filter": ["**/*"]
             }
         ]
     },
