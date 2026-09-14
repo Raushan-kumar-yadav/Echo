@@ -4,25 +4,33 @@ import math
 from pathlib import Path
 
 # ── Embedding strategy ──────────────────────────────────────────────────────────
-# Tier 1: sentence_transformers (best quality, requires torch).
-# Tier 2: Pure-Python hash-bag-of-words embedding — zero downloads, zero extra
-#          dependencies, works in PyInstaller on any machine offline.
-#          Quality: keyword-level (searches "iphone" finds "iphone" segments).
-#          Dimension = 384 cosine, same as Tier-1 so collections are compatible.
+# Tier 1: fastembed — pure ONNX, zero torch dependency. Works in PyInstaller
+#          builds where torch is excluded. Model: BAAI/bge-small-en-v1.5 (384-dim).
+# Tier 2: sentence_transformers ONNX backend (dev env with torch installed).
+# Tier 3: Pure-Python hash-bag-of-words — zero dependencies, offline, keyword-level.
 # IMPORTANT: we ALWAYS provide explicit embeddings to chromadb so it never
 # tries to auto-embed (which would trigger a ~23 MB S3 download and crash the
 # sandboxed worker process).
 
+_embedder = None
+_embedder_type = "hash"
+
+# Tier 1 — fastembed (torch-free, pure ONNX)
 try:
-    from sentence_transformers import SentenceTransformer as _ST
-    # Use ONNX backend so PyTorch is NOT required.
-    # torch is excluded from the PyInstaller build (~2 GB) but onnxruntime
-    # IS bundled, and sentence-transformers >= 3.0 supports backend="onnx".
-    _embedder = _ST("all-MiniLM-L6-v2", backend="onnx")
-    print("[indexer] Using sentence_transformers embedder (Tier 1, ONNX backend)", flush=True)
-except Exception as _e:
-    print(f"[indexer] sentence_transformers unavailable ({_e}) — using hash-bag-of-words fallback", flush=True)
-    _embedder = None
+    from fastembed import TextEmbedding as _FE
+    _fe_model = _FE("BAAI/bge-small-en-v1.5")
+    _embedder = _fe_model
+    _embedder_type = "fastembed"
+    print("[indexer] Using fastembed embedder (Tier 1, torch-free ONNX)", flush=True)
+except Exception as _e1:
+    # Tier 2 — sentence_transformers ONNX (dev env)
+    try:
+        from sentence_transformers import SentenceTransformer as _ST
+        _embedder = _ST("all-MiniLM-L6-v2", backend="onnx")
+        _embedder_type = "sentence_transformers"
+        print("[indexer] Using sentence_transformers embedder (Tier 2, ONNX backend)", flush=True)
+    except Exception as _e2:
+        print(f"[indexer] sentence_transformers unavailable ({_e2}) — using hash-bag-of-words fallback", flush=True)
 
 _EMBED_DIM = 384
 
@@ -51,7 +59,12 @@ def _simple_embed(texts: list[str]) -> list[list[float]]:
 def _encode(texts: list[str]) -> list[list[float]]:
     """Always returns an explicit embeddings list — never None."""
     if _embedder is not None:
-        return _embedder.encode(texts).tolist()
+        if _embedder_type == "fastembed":
+            # fastembed.embed() returns a generator of numpy arrays
+            return [v.tolist() for v in _embedder.embed(texts)]
+        else:
+            # sentence_transformers.encode() returns a single ndarray (batch)
+            return _embedder.encode(texts).tolist()
     return _simple_embed(texts)
 
 

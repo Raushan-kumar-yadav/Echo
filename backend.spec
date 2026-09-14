@@ -64,11 +64,13 @@ _rust_d,   _rust_b,   _rust_h     = safe_collect('chromadb_rust_bindings')
 _fw_d,     _fw_b,     _fw_h       = safe_collect('faster_whisper')
 _ct2_d,    _ct2_b,    _ct2_h      = safe_collect('ctranslate2')
 _ow_d,     _ow_b,     _ow_h       = safe_collect('whisper')
-# sentence_transformers: Tier-1 semantic embedder for ChromaDB indexing
+# sentence_transformers: Tier-2 semantic embedder (dev env with torch)
 _st_d,     _st_b,     _st_h       = safe_collect('sentence_transformers')
 _tok_d,    _tok_b,    _tok_h      = safe_collect('tokenizers')
 # optimum: required for sentence_transformers backend="onnx" (torch-free inference)
 _opt_d,    _opt_b,    _opt_h      = safe_collect('optimum')
+# fastembed: Tier-1 embedder — pure ONNX, zero torch dependency
+_fe_d,     _fe_b,     _fe_h       = safe_collect('fastembed')
 # nvidia CUDA packages: provide cublas64_12.dll, cudnn64_9.dll, etc.
 # Required by ctranslate2 for GPU-accelerated Whisper transcription.
 _nvcublas_d, _nvcublas_b, _nvcublas_h = safe_collect('nvidia.cublas')
