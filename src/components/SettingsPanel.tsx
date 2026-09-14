@@ -1,6 +1,14 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
 
+// Env key info from backend
+interface EnvKeyInfo {
+  value: string;
+  masked: string;
+  isSecret: boolean;
+}
+type EnvSettings = Record<string, EnvKeyInfo>;
+
 //   Types  
 
 interface Settings {
@@ -136,9 +144,31 @@ async function postGeneratorSettings(delta: Partial<GeneratorSettings>): Promise
   } catch { return null; }
 }
 
+async function fetchEnvSettings(): Promise<EnvSettings | null> {
+  const port = getPort();
+  if (!port) return null;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/settings/env`);
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
+async function postEnvSettings(updates: Record<string, string>): Promise<EnvSettings | null> {
+  const port = getPort();
+  if (!port) return null;
+  try {
+    const r = await fetch(`http://127.0.0.1:${port}/settings/env`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ updates }),
+    });
+    return r.ok ? r.json() : null;
+  } catch { return null; }
+}
+
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'generators';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'generators' | 'apis';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'cache', icon: '⚡', label: 'Cache'       },
@@ -146,6 +176,7 @@ const TABS: { id: Tab; icon: string; label: string }[] = [
   { id: 'output', icon: '🖼', label: 'Output'      },
   { id: 'ai', icon: '🤖', label: 'AI Indexing' },
   { id: 'generators', icon: '✨', label: 'Generators'  },
+  { id: 'apis', icon: '🔑', label: 'API Keys'     },
 ];
 
 const GEMINI_VOICES = [
@@ -246,18 +277,37 @@ function OllamaModelSelect({
 
 interface Props { onClose: () => void; }
 
+// Which edge/corner is being dragged
+type ResizeEdge = 'e' | 'w' | 's' | 'n' | 'se' | 'sw' | 'ne' | 'nw';
+
+const INIT_W = 860;
+const INIT_H = Math.round(window.innerHeight * 0.82);
+const MIN_W  = 520;
+const MIN_H  = 400;
+
 export default function SettingsPanel({ onClose }: Props) {
   const [s, setS] = useState<Settings | null>(null);
   const [ai, setAi] = useState<AiSettings | null>(null);
   const [gen, setGen] = useState<GeneratorSettings | null>(null);
+  const [env, setEnv] = useState<EnvSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<Tab>('cache');
+  const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [panelW, setPanelW] = useState(INIT_W);
+  const [panelH, setPanelH] = useState(INIT_H);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const panelRef   = useRef<HTMLDivElement>(null);
+  const dragRef    = useRef<{
+    edge: ResizeEdge;
+    startX: number; startY: number;
+    startW: number; startH: number;
+  } | null>(null);
 
   useEffect(() => {
     fetchSettings().then(setS);
     fetchAiSettings().then(setAi);
     fetchGeneratorSettings().then(setGen);
+    fetchEnvSettings().then(setEnv);
   }, []);
 
   useEffect(() => {
@@ -265,6 +315,43 @@ export default function SettingsPanel({ onClose }: Props) {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
+
+  // Resize drag logic
+  const startResize = useCallback((edge: ResizeEdge) => (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragRef.current = {
+      edge,
+      startX: e.clientX,
+      startY: e.clientY,
+      startW: panelRef.current?.offsetWidth  ?? panelW,
+      startH: panelRef.current?.offsetHeight ?? panelH,
+    };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const { edge: eg, startX, startY, startW, startH } = dragRef.current;
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      let nw = startW, nh = startH;
+      if (eg.includes('e'))  nw = Math.max(MIN_W, startW + dx);
+      if (eg.includes('w'))  nw = Math.max(MIN_W, startW - dx);
+      if (eg.includes('s'))  nh = Math.max(MIN_H, startH + dy);
+      if (eg.includes('n'))  nh = Math.max(MIN_H, startH - dy);
+      // Clamp to viewport
+      nw = Math.min(nw, window.innerWidth  - 20);
+      nh = Math.min(nh, window.innerHeight - 20);
+      setPanelW(nw);
+      setPanelH(nh);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup',   onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup',   onUp);
+  }, [panelW, panelH]);
+
 
   const apply = useCallback(async (delta: Partial<Settings>) => {
     setSaving(true);
@@ -287,10 +374,33 @@ export default function SettingsPanel({ onClose }: Props) {
     setSaving(false);
   }, []);
 
+  const applyEnv = useCallback(async (key: string, value: string) => {
+    setSaving(true);
+    const next = await postEnvSettings({ [key]: value });
+    if (next) setEnv(next);
+    setSaving(false);
+  }, []);
+
   return (
     <div className="sp-overlay" ref={overlayRef}
       onClick={e => { if (e.target === overlayRef.current) onClose(); }}>
-      <div className="sp-panel" role="dialog" aria-modal="true" aria-label="Settings">
+      <div
+        className="sp-panel"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
+        style={{ width: panelW, height: panelH }}
+      >
+        {/* Resize handles — 4 edges + 4 corners */}
+        <div className="sp-rz sp-rz--e"  onMouseDown={startResize('e')} />
+        <div className="sp-rz sp-rz--w"  onMouseDown={startResize('w')} />
+        <div className="sp-rz sp-rz--s"  onMouseDown={startResize('s')} />
+        <div className="sp-rz sp-rz--n"  onMouseDown={startResize('n')} />
+        <div className="sp-rz sp-rz--se" onMouseDown={startResize('se')} />
+        <div className="sp-rz sp-rz--sw" onMouseDown={startResize('sw')} />
+        <div className="sp-rz sp-rz--ne" onMouseDown={startResize('ne')} />
+        <div className="sp-rz sp-rz--nw" onMouseDown={startResize('nw')} />
 
         {/* Header */}
         <div className="sp-header">
@@ -317,7 +427,7 @@ export default function SettingsPanel({ onClose }: Props) {
 
           {/* Right content */}
           <div className="sp-content">
-            {!s && tab !== 'ai' && tab !== 'generators' && (
+            {!s && tab !== 'ai' && tab !== 'generators' && tab !== 'apis' && (
               <p className="sp-loading">Connecting to engine…</p>
             )}
 
@@ -921,6 +1031,176 @@ export default function SettingsPanel({ onClose }: Props) {
                         <br /><code>ollama pull wan2.1</code> (Video)
                       </div>
                     )}
+                  </>
+                )}
+              </>
+            )}
+
+      
+            {tab === 'apis' && (
+              <>
+                {!env ? (
+                  <p className="sp-loading">Loading API settings…</p>
+                ) : (
+                  <>
+                    <div className="sp-hint sp-hint--info">
+                      Keys saved to local <code>.env</code> file. Blur field or press Enter to save. Agent restart required for provider changes.
+                    </div>
+
+                    {/* ── AI Provider ── */}
+                    <div className="sp-api-group">
+                      <div className="sp-api-group-title"><span className="sp-api-icon">🤖</span> AI Agent Provider</div>
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">Provider</span>
+                        <div className="sp-api-field">
+                          <select className="sp-select" value={env.ECHO_AI_PROVIDER?.value || 'ollama'}
+                            onChange={e => applyEnv('ECHO_AI_PROVIDER', e.target.value)}>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="claude">Anthropic Claude</option>
+                            <option value="groq">Groq</option>
+                            <option value="tabi">Tabi</option>
+                            <option value="tokenrouter">TokenRouter</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">Model Name</span>
+                        <div className="sp-api-field">
+                          <input className="sp-api-input" placeholder="e.g. gpt-4o-mini, z-ai/glm-5.3-free"
+                            defaultValue={env.ECHO_AI_MODEL?.value || ''}
+                            onBlur={e => applyEnv('ECHO_AI_MODEL', e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ── LLM API Keys ── */}
+                    <div className="sp-api-group">
+                      <div className="sp-api-group-title"><span className="sp-api-icon">🔑</span> LLM API Keys</div>
+                      {([
+                        ['OPENAI_API_KEY',    'OpenAI'],
+                        ['GOOGLE_API_KEY',    'Google'],
+                        ['ANTHROPIC_API_KEY', 'Anthropic'],
+                        ['GROQ_API_KEY',      'Groq'],
+                      ] as [string, string][]).map(([key, label]) => (
+                        <div className="sp-api-row" key={key}>
+                          <span className="sp-api-label">{label} API Key</span>
+                          <div className="sp-api-field">
+                            <input
+                              className="sp-api-input"
+                              type={showSecrets[key] ? 'text' : 'password'}
+                              defaultValue={env[key]?.value || ''}
+                              placeholder="Not set"
+                              onBlur={e => { if (e.target.value !== env[key]?.value) applyEnv(key, e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn"
+                              onClick={() => setShowSecrets(p => ({ ...p, [key]: !p[key] }))}>
+                              {showSecrets[key] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env[key]?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env[key]?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── TokenRouter / Tabi ── */}
+                    <div className="sp-api-group">
+                      <div className="sp-api-group-title"><span className="sp-api-icon">🔗</span> TokenRouter / Tabi</div>
+                      {([
+                        ['TOKENROUTER_API_KEY',  'TokenRouter Key',  true],
+                        ['TOKENROUTER_BASE_URL', 'TokenRouter URL',  false],
+                        ['TABI_API_KEY',         'Tabi Key',         true],
+                        ['TABI_BASE_URL',        'Tabi URL',         false],
+                      ] as [string, string, boolean][]).map(([key, label, isKey]) => (
+                        <div className="sp-api-row" key={key}>
+                          <span className="sp-api-label">{label}</span>
+                          <div className="sp-api-field">
+                            <input
+                              className="sp-api-input"
+                              type={isKey && !showSecrets[key] ? 'password' : 'text'}
+                              defaultValue={env[key]?.value || ''}
+                              placeholder={isKey ? 'Not set' : 'https://…'}
+                              onBlur={e => { if (e.target.value !== env[key]?.value) applyEnv(key, e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            {isKey && (
+                              <>
+                                <button className="sp-api-btn"
+                                  onClick={() => setShowSecrets(p => ({ ...p, [key]: !p[key] }))}>
+                                  {showSecrets[key] ? '🙈' : '👁'}
+                                </button>
+                                <span className={`sp-api-status ${env[key]?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                                  {env[key]?.value ? '✓' : '✗'}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Custom Base URLs ── */}
+                    <div className="sp-api-group">
+                      <div className="sp-api-group-title"><span className="sp-api-icon">🌐</span> Custom Base URLs</div>
+                      {([
+                        ['ANTHROPIC_BASE_URL', 'Anthropic URL', 'https://api.anthropic.com'],
+                        ['OLLAMA_HOST',        'Ollama Host',   'http://localhost:11434'],
+                      ] as [string, string, string][]).map(([key, label, ph]) => (
+                        <div className="sp-api-row" key={key}>
+                          <span className="sp-api-label">{label}</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input" placeholder={ph}
+                              defaultValue={env[key]?.value || ''}
+                              onBlur={e => { if (e.target.value !== env[key]?.value) applyEnv(key, e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* ── Stability / YouTube ── */}
+                    <div className="sp-api-group">
+                      <div className="sp-api-group-title"><span className="sp-api-icon">🎨</span> Stability AI &amp; YouTube</div>
+                      {([
+                        ['STABILITY_API_KEY',    'Stability Key',    true],
+                        ['YOUTUBE_CLIENT_ID',    'YouTube Client ID', false],
+                        ['YOUTUBE_CLIENT_SECRET','YouTube Secret',   true],
+                      ] as [string, string, boolean][]).map(([key, label, isSecret]) => (
+                        <div className="sp-api-row" key={key}>
+                          <span className="sp-api-label">{label}</span>
+                          <div className="sp-api-field">
+                            <input
+                              className="sp-api-input"
+                              type={isSecret && !showSecrets[key] ? 'password' : 'text'}
+                              defaultValue={env[key]?.value || ''}
+                              placeholder="Not set"
+                              onBlur={e => { if (e.target.value !== env[key]?.value) applyEnv(key, e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            {isSecret && (
+                              <button className="sp-api-btn"
+                                onClick={() => setShowSecrets(p => ({ ...p, [key]: !p[key] }))}>
+                                {showSecrets[key] ? '🙈' : '👁'}
+                              </button>
+                            )}
+                            <span className={`sp-api-status ${env[key]?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env[key]?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="sp-hint sp-hint--warn">
+                      ⚠ Restart the AI agent after changing provider or keys for changes to take full effect.
+                    </div>
                   </>
                 )}
               </>

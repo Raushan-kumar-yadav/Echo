@@ -185,6 +185,10 @@ function startPython(): void {
       OPENBLAS_NUM_THREADS: '1',
       OMP_NUM_THREADS: '1',
       MKL_NUM_THREADS: '1',
+      // Used by backend/routers/project.py to find the correct .env file.
+      // In packaged builds this is process.resourcesPath (writable).
+      // In dev this is the repo root (where .env already lives).
+      ECHO_RESOURCES_PATH: app.isPackaged ? process.resourcesPath : projectRoot,
     },
   })
 

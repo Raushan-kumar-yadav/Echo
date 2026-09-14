@@ -784,3 +784,127 @@ def postGeneratorSettings(payload: GeneratorSettingsPayload):
     if payload.ollamaUrl is not None:
         _cfg.set("generators.ollama_url", payload.ollamaUrl.strip())
     return _get_generator_settings()
+
+
+# ── API Keys / .env Settings ──────────────────────────────────────────────
+
+import os as _os
+import sys as _sys
+from pathlib import Path as _Path
+
+def _resolve_env_file() -> _Path:
+    """
+    Resolve the .env file path for both dev and packaged (PyInstaller) mode.
+    - Dev:       <repo_root>/.env  (next to package.json)
+    - Packaged:  ECHO_RESOURCES_PATH env var set by Electron main.ts
+                 → typically %APPDATA%/Echo/.env
+    """
+    resources_path = _os.environ.get('ECHO_RESOURCES_PATH', '')
+    if resources_path:
+        p = _Path(resources_path) / '.env'
+        # Ensure the parent dir exists (first run)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    # Dev fallback: climb up from this file to repo root
+    return _Path(__file__).resolve().parents[2] / '.env'
+
+_ENV_FILE = _resolve_env_file()
+
+# Only these keys can be read/written from the GUI
+_ALLOWED_ENV_KEYS = [
+    "ECHO_AI_PROVIDER",
+    "ECHO_AI_MODEL",
+    "GOOGLE_API_KEY",
+    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_BASE_URL",
+    "TABI_API_KEY",
+    "TABI_BASE_URL",
+    "TOKENROUTER_API_KEY",
+    "TOKENROUTER_BASE_URL",
+    "STABILITY_API_KEY",
+    "YOUTUBE_CLIENT_ID",
+    "YOUTUBE_CLIENT_SECRET",
+    "OLLAMA_HOST",
+]
+
+
+def _read_env_file() -> dict[str, str]:
+    """Parse the .env file into a dict (preserves comments as-is)."""
+    result: dict[str, str] = {}
+    if not _ENV_FILE.exists():
+        return result
+    for line in _ENV_FILE.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if "=" in stripped:
+            key, _, val = stripped.partition("=")
+            result[key.strip()] = val.strip()
+    return result
+
+
+def _write_env_file(updates: dict[str, str]) -> None:
+    """Update .env file with new values, preserving comments and order."""
+    lines: list[str] = []
+    if _ENV_FILE.exists():
+        lines = _ENV_FILE.read_text(encoding="utf-8").splitlines()
+
+    updated_keys: set[str] = set()
+    new_lines: list[str] = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            key = stripped.partition("=")[0].strip()
+            if key in updates:
+                new_lines.append(f"{key}={updates[key]}")
+                updated_keys.add(key)
+                continue
+        new_lines.append(line)
+
+    # Add any new keys not already in the file
+    for key, val in updates.items():
+        if key not in updated_keys:
+            new_lines.append(f"{key}={val}")
+
+    _ENV_FILE.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    # Also update os.environ so changes take effect immediately
+    for key, val in updates.items():
+        _os.environ[key] = val
+
+
+def _mask_key(val: str) -> str:
+    """Show only last 4 chars: sk-****abcd"""
+    if not val or len(val) <= 4:
+        return val
+    return val[:3] + "…" + val[-4:]
+
+
+@router.get("/settings/env")
+def getEnvSettings():
+    env_data = _read_env_file()
+    result: dict[str, dict] = {}
+    for key in _ALLOWED_ENV_KEYS:
+        raw = env_data.get(key, _os.environ.get(key, ""))
+        is_secret = "KEY" in key or "SECRET" in key
+        result[key] = {
+            "value": raw,
+            "masked": _mask_key(raw) if is_secret else raw,
+            "isSecret": is_secret,
+        }
+    return result
+
+
+class EnvUpdatePayload(BaseModel):
+    updates: dict[str, str]
+
+
+@router.post("/settings/env")
+def postEnvSettings(payload: EnvUpdatePayload):
+    # Only allow whitelisted keys
+    safe_updates = {k: v for k, v in payload.updates.items() if k in _ALLOWED_ENV_KEYS}
+    if safe_updates:
+        _write_env_file(safe_updates)
+        print(f"[Settings] Updated .env keys: {list(safe_updates.keys())}", flush=True)
+    return getEnvSettings()

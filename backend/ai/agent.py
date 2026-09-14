@@ -69,8 +69,8 @@ def _detect_ollama_model() -> str:
 
 
 def _build_llm():
-    provider = os.environ.get("FADE_AI_PROVIDER", "ollama").lower()
-    model_name = os.environ.get("FADE_AI_MODEL", "")
+    provider = os.environ.get("ECHO_AI_PROVIDER", os.environ.get("FADE_AI_PROVIDER", "ollama")).lower()
+    model_name = os.environ.get("ECHO_AI_MODEL", os.environ.get("FADE_AI_MODEL", ""))
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -143,8 +143,23 @@ def _build_llm():
             kwargs["anthropic_api_url"] = base_url
         return ChatAnthropic(**kwargs)
 
+    elif provider == "tokenrouter":
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("TOKENROUTER_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: TOKENROUTER_API_KEY not set in .env", flush=True)
+        m = model_name or "z-ai/glm-5.3-free"
+        print(f"[AI Agent] Using TokenRouter model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+        )
+
     else:
-        raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
+        raise ValueError(f"Unknown ECHO_AI_PROVIDER: {provider}")
 
 
 #   User profile helper  
