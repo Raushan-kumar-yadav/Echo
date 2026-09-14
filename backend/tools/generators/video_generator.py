@@ -21,8 +21,7 @@ _VEO_MODEL_LITE = "veo-3.1-lite-generate-preview"
 
 
 def _load_env() -> str:
-    from dotenv import load_dotenv
-    load_dotenv(dotenv_path=str(Path(__file__).parents[3] / ".env"))
+    """Return GOOGLE_API_KEY — .env is loaded at startup by main.py."""
     return os.getenv("GOOGLE_API_KEY", "").strip()
 
 

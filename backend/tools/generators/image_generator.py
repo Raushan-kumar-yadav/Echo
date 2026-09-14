@@ -27,8 +27,7 @@ class GeminiImageGenerator:
     """
 
     def __init__(self):
-        from dotenv import load_dotenv
-        load_dotenv(dotenv_path=str(Path(__file__).parents[3] / ".env"))
+         
         self._api_key = os.getenv("GOOGLE_API_KEY", "").strip()
         if not self._api_key:
             raise EnvironmentError(

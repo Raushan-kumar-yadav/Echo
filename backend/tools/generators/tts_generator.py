@@ -20,9 +20,7 @@ GEMINI_VOICES = [
 
 
 def _load_env() -> str:
-    """Load .env and return GOOGLE_API_KEY."""
-    from dotenv import load_dotenv
-    load_dotenv(dotenv_path=str(Path(__file__).parents[3] / ".env"))
+     
     return os.getenv("GOOGLE_API_KEY", "").strip()
 
 

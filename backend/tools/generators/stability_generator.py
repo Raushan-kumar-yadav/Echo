@@ -146,3 +146,4 @@ class StabilityImageGenerator:
             results.append({"filepath": filepath, "title": f"AI: {prompt[:50]}"})
 
         return results
+
