@@ -53,9 +53,54 @@ def set_port(port: int) -> None:
  
 @tool
 def get_timeline_state() -> str:
-    """Return the full current timeline state as JSON (tracks, clips, durations, fps)."""
-    data = _get("/timeline/state")
-    return json.dumps(data, indent=2)
+    """Return a COMPACT timeline summary for the AI agent.
+
+    Returns only the fields needed to operate on clips:
+      - fps, totalFrames
+      - tracks[]: index, clips[]: clipId, type, startFrame, durationFrames, endFrame,
+        assetId (video/image/audio), name/text (text clips), trackIndex
+
+    Use search_library() to find sceneChunks/transcripts. Use get_library_assets()
+    for full asset metadata. This tool is intentionally compact to avoid overloading context.
+    """
+    import requests, json
+    data = requests.get("http://127.0.0.1:8000/timeline/state").json()
+    fps = data.get("fps", 30)
+    total = data.get("totalFrames", 0)
+
+    compact_tracks = []
+    for t_idx, track in enumerate(data.get("tracks", [])):
+        compact_clips = []
+        for clip in track.get("clips", []):
+            c: dict = {
+                "clipId":         clip.get("clipId"),
+                "type":           clip.get("type"),
+                "startFrame":     clip.get("startFrame"),
+                "durationFrames": clip.get("durationFrames"),
+                "endFrame":       (clip.get("startFrame", 0) + clip.get("durationFrames", 0)),
+                "trackIndex":     t_idx,
+            }
+            # video/image/audio clips
+            if clip.get("assetId"):
+                c["assetId"] = clip["assetId"]
+            # text clips
+            if clip.get("text") is not None:
+                c["text"] = clip["text"][:60]  # truncate long text
+            if clip.get("name"):
+                c["name"] = clip["name"]
+            compact_clips.append(c)
+        compact_tracks.append({
+            "trackIndex": t_idx,
+            "kind":       track.get("kind", "video"),
+            "clips":      compact_clips,
+        })
+
+    return json.dumps({
+        "fps": fps,
+        "totalFrames": total,
+        "totalSec": round(total / fps, 2) if fps else 0,
+        "tracks": compact_tracks,
+    }, indent=2)
 
 @tool
 def get_library() -> str:

@@ -299,7 +299,8 @@ def splitClip(req: SplitClipRequest):
     for track in tl.tracks:
         clip = track.getClip(req.clipId)
         if clip:
-            asset = _library.get(clip.assetId) if clip.assetId else None
+            clip_asset_id = getattr(clip, 'assetId', None)
+            asset = _library.get(clip_asset_id) if clip_asset_id else None
             cmd = SplitClipCommand(track, clip, req.frame,
                                    scheduler=engine.scheduler, asset=asset, fps=fps)
             try:

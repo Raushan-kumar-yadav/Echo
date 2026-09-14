@@ -118,39 +118,59 @@ def transcribe(filepath: str, model_name: str | None = None,
      
     from backend.config.global_config import cfg
     model_name = model_name or cfg.get("ai.whisper_model", DEFAULT_MODEL)
-    model = get_model(model_name)
-    backend = getattr(model, "_backend", "openai")
 
-    print(f"[Whisper] Transcribing {filepath} (backend={backend})...", flush=True)
+    def _do_transcribe(m_name: str) -> list[dict]:
+        model = get_model(m_name)
+        backend = getattr(model, "_backend", "openai")
+        print(f"[Whisper] Transcribing {filepath} (backend={backend})...", flush=True)
 
-    if backend == "faster":
-        segments_iter, info = model.transcribe(
-            filepath,
-            language=language,
-            word_timestamps=False,
-            vad_filter=True,
-            vad_parameters={"min_silence_duration_ms": 500},
-        )
-        print(f"[Whisper] Detected language: {info.language} ({info.language_probability:.0%})", flush=True)
-        segments = []
-        for seg in segments_iter:
-            segments.append({
-                "start_s": round(seg.start, 3),
-                "end_s": round(seg.end, 3),
-                "text": seg.text.strip(),
-            })
-    else:
-        options = {}
-        if language:
-            options["language"] = language
-        result = model.transcribe(filepath, word_timestamps=False, **options)
-        segments = []
-        for seg in result.get("segments", []):
-            segments.append({
-                "start_s": round(seg["start"], 3),
-                "end_s": round(seg["end"], 3),
-                "text": seg["text"].strip(),
-            })
+        if backend == "faster":
+            segments_iter, info = model.transcribe(
+                filepath,
+                language=language,
+                word_timestamps=False,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500},
+            )
+            print(f"[Whisper] Detected language: {info.language} ({info.language_probability:.0%})", flush=True)
+            segs = []
+            for seg in segments_iter:
+                segs.append({
+                    "start_s": round(seg.start, 3),
+                    "end_s": round(seg.end, 3),
+                    "text": seg.text.strip(),
+                })
+        else:
+            options = {}
+            if language:
+                options["language"] = language
+            result = model.transcribe(filepath, word_timestamps=False, **options)
+            segs = []
+            for seg in result.get("segments", []):
+                segs.append({
+                    "start_s": round(seg["start"], 3),
+                    "end_s": round(seg["end"], 3),
+                    "text": seg["text"].strip(),
+                })
+        return segs
+
+    try:
+        segments = _do_transcribe(model_name)
+    except (MemoryError, RuntimeError) as oom:
+        err_str = str(oom)
+        if "mkl_malloc" in err_str or "allocate" in err_str.lower() or "memory" in err_str.lower():
+            # Clear model cache to free RAM, then retry with the tiny model (~4x less memory).
+            # This happens after heavy vision indexing fills the sandbox's address space.
+            print(f"[Whisper] OOM ({err_str[:80]}) — freeing model cache, retrying with 'tiny'...", flush=True)
+            _model_cache.clear()
+            import gc; gc.collect()
+            try:
+                segments = _do_transcribe("tiny")
+            except Exception as e2:
+                print(f"[Whisper] Retry also failed: {e2}", flush=True)
+                return []
+        else:
+            raise
 
     print(f"[Whisper] Done — {len(segments)} segments", flush=True)
     return segments
