@@ -16,6 +16,8 @@ a = Analysis(
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
         (str(ROOT / 'backend' / 'timeline' / 'effects' / 'sksl'), 'backend/timeline/effects/sksl'),
+        # kokoro_onnx needs its config.json bundled (TTS)
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'kokoro_onnx'), 'kokoro_onnx'),
     ],
     hiddenimports=[
         'uvicorn.lifespan.on',
