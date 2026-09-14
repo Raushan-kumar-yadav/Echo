@@ -4,12 +4,15 @@ import json
 import threading
 from pathlib import Path
 
-_CONFIG_PATH = Path(__file__).parent / "app_config.json"
+# Store user config in ~/.echo/ so it survives PyInstaller rebuilds and upgrades.
+# The old location (alongside the .py file inside _internal/) gets wiped by
+# robocopy /MIR every time a new build is deployed.
+_CONFIG_PATH = Path.home() / ".echo" / "config.json"
 
 _DEFAULTS: dict = {
     "ai": {
         "vision_model":    "moondream:latest",
-        "frame_interval":  4.0,
+        "frame_interval":  6.0,
         "whisper_backend": "faster",   # "faster" | "openai"
         "whisper_model":   "small",    # tiny | base | small | medium | large
         "max_concurrent_index": 2,     # how many indexing jobs run at once
