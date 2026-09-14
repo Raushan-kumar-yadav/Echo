@@ -45,6 +45,8 @@ _metadata_datas = safe_meta(
     'fastapi', 'starlette', 'uvicorn', 'pydantic',
     # Misc packages that read their own version at import
     'aiofiles', 'anyio', 'sniffio',
+    # Whisper
+    'faster_whisper', 'openai-whisper',
 )
 
 # collect_all() is the canonical PyInstaller way to handle packages that use
@@ -58,6 +60,10 @@ _chroma_d, _chroma_b, _chroma_h   = safe_collect('chromadb')
 # chromadb_rust_bindings is the Rust backend extension (~62 MB .pyd).
 # It's imported via `import chromadb_rust_bindings` inside chromadb/api/rust.py.
 _rust_d,   _rust_b,   _rust_h     = safe_collect('chromadb_rust_bindings')
+# faster-whisper + its C extension (ctranslate2) + openai-whisper fallback
+_fw_d,     _fw_b,     _fw_h       = safe_collect('faster_whisper')
+_ct2_d,    _ct2_b,    _ct2_h      = safe_collect('ctranslate2')
+_ow_d,     _ow_b,     _ow_h       = safe_collect('whisper')
 
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
@@ -65,7 +71,7 @@ a = Analysis(
     binaries=[
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
-    ] + _chroma_b + _rust_b,
+    ] + _chroma_b + _rust_b + _fw_b + _ct2_b + _ow_b,
     datas=[
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
@@ -75,7 +81,7 @@ a = Analysis(
         # jsonschema_specifications ships JSON schemas loaded at import time
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'jsonschema_specifications' / 'schemas'),
          'jsonschema_specifications/schemas'),
-    ] + _metadata_datas + _chroma_d + _rust_d,
+    ] + _metadata_datas + _chroma_d + _rust_d + _fw_d + _ct2_d + _ow_d,
     hiddenimports=[
         'uvicorn.lifespan.on',
         'uvicorn.protocols.http.auto',
