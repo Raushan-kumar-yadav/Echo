@@ -394,6 +394,20 @@ class WorkerBus:
                     pass
                 self._on_index_complete(asset_id)
 
+            elif rtype == "index_video_frame_progress":
+                # Per-frame progress: 10% → 80% during vision phase
+                frame = result.get("frame", 0)
+                total = result.get("total", 1)
+                pct = 0.10 + 0.70 * (frame / max(total, 1))
+                try:
+                    from backend.routers.jobs import update_asset_job_progress
+                    update_asset_job_progress(
+                        asset_id, "video_index", pct,
+                        f"Analyzing frame {frame}/{total}…"
+                    )
+                except Exception:
+                    pass
+
             elif rtype == "index_video_cancelled":
                 self._on_index_complete(asset_id)
 

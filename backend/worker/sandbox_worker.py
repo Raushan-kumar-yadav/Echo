@@ -148,17 +148,21 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         def _run_vision() -> list[dict]:
             """Describe frames one-by-one, checking for cancellation between each."""
             import os as _os
-            from backend.ai.VideoSemantic.descriptions import describe_frame, _get_model
-            model = vision_model or _get_model()
+            from backend.ai.VideoSemantic.descriptions import describe_frame, _get_provider_config
+            # Resolve provider (ollama or gemini) from settings
+            prov, mdl, api_key = _get_provider_config()
+            if vision_model:  # per-call override still respected
+                mdl = vision_model
             results: list[dict] = []
             frame_files = sorted(
                 f for f in _os.listdir(tmp_dir)
                 if f.lower().endswith((".jpg", ".jpeg", ".png", ".webp"))
             )
+            total_frames = len(frame_files)
             for i, fname in enumerate(frame_files):
                 # Cancel check between every frame
                 if _is_cancelled():
-                    print(f"[SandboxWorker] Vision cancelled at frame {i}/{len(frame_files)} for {asset_id[:8]}", flush=True)
+                    print(f"[SandboxWorker] Vision cancelled at frame {i}/{total_frames} for {asset_id[:8]}", flush=True)
                     raise _IndexCancelled("Vision cancelled mid-frame")
                 fpath = _os.path.join(tmp_dir, fname)
                 # Compute approximate timestamp from filename or index
@@ -166,9 +170,20 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                     ts = float(fname.replace(".jpg","").replace(".jpeg","").replace(".png","").replace(".webp","").split("_")[-1])
                 except Exception:
                     ts = i * frame_interval
-                desc = describe_frame(fpath, model)
+                desc = describe_frame(fpath, mdl, provider=prov, api_key=api_key)
                 if desc:
                     results.append({"text": desc, "start": ts, "end": ts + frame_interval})
+                # Emit per-frame progress so UI shows a real % bar
+                if result_queue is not None:
+                    try:
+                        result_queue.put_nowait({
+                            "type": "index_video_frame_progress",
+                            "assetId": asset_id,
+                            "frame": i + 1,
+                            "total": total_frames,
+                        })
+                    except Exception:
+                        pass
             return results
 
         def _run_transcribe() -> list[dict]:
