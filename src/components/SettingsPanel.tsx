@@ -529,6 +529,18 @@ export default function SettingsPanel({ onClose }: Props) {
                       Smaller/faster models trade detail for speed.
                     </p>
 
+                    <div className="sp-subsection-title">🖥 Vision Model (Ollama)</div>
+
+                    <div className="sp-row">
+                      <label className="sp-label" htmlFor="idx-ollama-host">Ollama Endpoint</label>
+                      <input id="idx-ollama-host" className="sp-api-input sp-input--wide"
+                        placeholder="http://localhost:11434"
+                        defaultValue={env?.OLLAMA_HOST?.value || ''}
+                        onBlur={e => { if (e.target.value !== env?.OLLAMA_HOST?.value) applyEnv('OLLAMA_HOST', e.target.value); }}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      />
+                    </div>
+
                     <div className="sp-row">
                       <label className="sp-label" htmlFor="set-vision-model">Vision model</label>
                       <select id="set-vision-model" className="sp-select" value={ai.visionModel}
@@ -907,19 +919,54 @@ export default function SettingsPanel({ onClose }: Props) {
                     </div>
 
                     {gen.imageProvider === 'google' && (
-                      <div className="sp-hint sp-hint--info">
-                        Uses <strong>Gemini 3.1 Flash Image</strong> (Nano Banana 2).
-                        Requires a paid Google AI plan.
-                        <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Enable billing →</a>
-                      </div>
+                      <>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">Google API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['IMG_GOOGLE_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env?.GOOGLE_API_KEY?.value || ''}
+                              placeholder="AIza..."
+                              onBlur={e => { if (e.target.value !== env?.GOOGLE_API_KEY?.value) applyEnv('GOOGLE_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, IMG_GOOGLE_API_KEY: !p.IMG_GOOGLE_API_KEY }))}>
+                              {showSecrets['IMG_GOOGLE_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env?.GOOGLE_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env?.GOOGLE_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="sp-hint sp-hint--info">
+                          Uses <strong>Gemini Flash Image</strong>. Requires a Google AI API key.
+                          <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Get key →</a>
+                        </div>
+                      </>
                     )}
 
                     {/* ── Stability AI ── */}
                     {gen.imageProvider === 'stability' && (
                       <>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">Stability API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['STABILITY_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env?.STABILITY_API_KEY?.value || ''}
+                              placeholder="sk-..."
+                              onBlur={e => { if (e.target.value !== env?.STABILITY_API_KEY?.value) applyEnv('STABILITY_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, STABILITY_API_KEY: !p.STABILITY_API_KEY }))}>
+                              {showSecrets['STABILITY_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env?.STABILITY_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env?.STABILITY_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
                         <div className="sp-hint sp-hint--info">
-                          🎨 <strong>Stability AI</strong> — cloud generation, no GPU needed.
-                          Uses your <code>STABILITY_API_KEY</code> from <code>.env</code>.
                           Free credits on signup at{' '}
                           <a href="https://platform.stability.ai" target="_blank" rel="noreferrer" className="sp-link">platform.stability.ai →</a>
                         </div>
@@ -1144,16 +1191,27 @@ export default function SettingsPanel({ onClose }: Props) {
                     )}
 
                     {gen.imageProvider === 'local' && (
-                      <div className="sp-row">
-                        <label className="sp-label" htmlFor="img-local-model">Ollama Model</label>
-                        <OllamaModelSelect
-                          id="img-local-model"
-                          value={gen.imageLocalModel}
-                          models={gen.ollamaModels}
-                          fallbackLabel="gemma3:4b"
-                          onChange={v => applyGen({ imageLocalModel: v })}
-                        />
-                      </div>
+                      <>
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="img-ollama-host">Ollama Endpoint</label>
+                          <input id="img-ollama-host" className="sp-api-input sp-input--wide"
+                            placeholder="http://localhost:11434"
+                            defaultValue={env?.OLLAMA_HOST?.value || ''}
+                            onBlur={e => { if (e.target.value !== env?.OLLAMA_HOST?.value) applyEnv('OLLAMA_HOST', e.target.value); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                        </div>
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="img-local-model">Model</label>
+                          <OllamaModelSelect
+                            id="img-local-model"
+                            value={gen.imageLocalModel}
+                            models={gen.ollamaModels}
+                            fallbackLabel="gemma3:4b"
+                            onChange={v => applyGen({ imageLocalModel: v })}
+                          />
+                        </div>
+                      </>
                     )}
 
                     {/* ── TTS ── */}
@@ -1174,21 +1232,37 @@ export default function SettingsPanel({ onClose }: Props) {
                     </div>
 
                     {gen.ttsProvider === 'google' && (
-                      <div className="sp-row">
-                        <label className="sp-label" htmlFor="tts-voice">Voice</label>
-                        <select
-                          id="tts-voice"
-                          className="sp-select"
-                          value={gen.ttsGoogleVoice}
-                          onChange={e => applyGen({ ttsGoogleVoice: e.target.value })}
-                        >
-                          {GEMINI_VOICES.map(v => (
-                            <option key={v} value={v}>
-                              {v} — {VOICE_DESCRIPTIONS[v] ?? ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      <>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">Google API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['TTS_GOOGLE_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env?.GOOGLE_API_KEY?.value || ''}
+                              placeholder="AIza..."
+                              onBlur={e => { if (e.target.value !== env?.GOOGLE_API_KEY?.value) applyEnv('GOOGLE_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, TTS_GOOGLE_API_KEY: !p.TTS_GOOGLE_API_KEY }))}>
+                              {showSecrets['TTS_GOOGLE_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env?.GOOGLE_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env?.GOOGLE_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="tts-voice">Voice</label>
+                          <select id="tts-voice" className="sp-select"
+                            value={gen.ttsGoogleVoice}
+                            onChange={e => applyGen({ ttsGoogleVoice: e.target.value })}
+                          >
+                            {GEMINI_VOICES.map(v => (
+                              <option key={v} value={v}>{v} — {VOICE_DESCRIPTIONS[v] ?? ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </>
                     )}
 
                     {gen.ttsProvider === 'kokoro' && (
@@ -1235,11 +1309,30 @@ export default function SettingsPanel({ onClose }: Props) {
                     </div>
 
                     {gen.videoProvider === 'google' && (
-                      <div className="sp-hint sp-hint--info">
-                        Uses <strong>Veo 3.1</strong> — cinematic video with native audio.
-                        Requires a paid Google AI plan. Generation takes 30–120s.
-                        <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Enable billing →</a>
-                      </div>
+                      <>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">Google API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['VID_GOOGLE_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env?.GOOGLE_API_KEY?.value || ''}
+                              placeholder="AIza..."
+                              onBlur={e => { if (e.target.value !== env?.GOOGLE_API_KEY?.value) applyEnv('GOOGLE_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, VID_GOOGLE_API_KEY: !p.VID_GOOGLE_API_KEY }))}>
+                              {showSecrets['VID_GOOGLE_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env?.GOOGLE_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env?.GOOGLE_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="sp-hint sp-hint--info">
+                          Uses <strong>Veo 3.1</strong> — cinematic video with native audio. Generation takes 30–120s.
+                          <a href="https://aistudio.google.com" target="_blank" rel="noreferrer" className="sp-link"> Get key →</a>
+                        </div>
+                      </>
                     )}
 
                     {gen.videoProvider === 'local' && (
