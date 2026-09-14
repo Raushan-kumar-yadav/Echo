@@ -51,6 +51,16 @@ a = Analysis(
         (str(ROOT / 'backend' / 'timeline' / 'effects' / 'sksl'), 'backend/timeline/effects/sksl'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'kokoro_onnx'), 'kokoro_onnx'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'espeakng_loader'), 'espeakng_loader'),
+        # jsonschema_specifications ships JSON schema files that jsonschema loads
+        # at import time via pathlib.Path(__file__).parent / "schemas" — must be
+        # bundled as data or chromadb's import chain crashes with FileNotFoundError.
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'jsonschema_specifications' / 'schemas'),
+         'jsonschema_specifications/schemas'),
+        # chromadb migrations (SQL files) and embedding_function JSON schemas
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb' / 'migrations'),
+         'chromadb/migrations'),
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb' / 'utils' / 'embedding_functions' / 'schemas'),
+         'chromadb/utils/embedding_functions/schemas'),
     ] + _metadata_datas,
     hiddenimports=[
         'uvicorn.lifespan.on',
