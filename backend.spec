@@ -1,18 +1,47 @@
-# backend.spec  -  PyInstaller spec for Echo backend
-# Run: .venv\Scripts\pyinstaller backend.spec --distpath pyinstaller-dist --clean
 
 import sys
 import os
 from pathlib import Path
+from PyInstaller.utils.hooks import copy_metadata as _cm
 
 ROOT = Path(SPECPATH)
 block_cipher = None
+
+
+def safe_meta(*packages):
+    """copy_metadata() for every package — silently skip ones not installed."""
+    result = []
+    for pkg in packages:
+        try:
+            result += _cm(pkg)
+        except Exception as _e:
+            print(f"[spec] metadata not found for '{pkg}': {_e}")
+    return result
+
+
+_metadata_datas = safe_meta(
+    # HTTP clients that call importlib.metadata.version() in __init__
+    'httpx', 'httpx2', 'httpcore',
+    # LangChain ecosystem
+    'langchain_core', 'langchain_text_splitters',
+    'langchain_ollama', 'langchain_openai', 'langchain_google_genai',
+    'langchain_anthropic', 'langchain_groq', 'langchain_community',
+    # LangGraph
+    'langgraph', 'langgraph_checkpoint',
+    # Ollama Python client
+    'ollama',
+    # Vector DB
+    'chromadb',
+    # Web framework
+    'fastapi', 'starlette', 'uvicorn', 'pydantic',
+    # Misc packages that read their own version at import
+    'aiofiles', 'anyio', 'sniffio',
+)
 
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
     pathex=[str(ROOT)],
     binaries=[
-        # onnxruntime DLLs (needed by kokoro_onnx for ONNX model inference)
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
     ],
@@ -20,11 +49,9 @@ a = Analysis(
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
         (str(ROOT / 'backend' / 'timeline' / 'effects' / 'sksl'), 'backend/timeline/effects/sksl'),
-        # kokoro_onnx: config.json needed for TTS package
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'kokoro_onnx'), 'kokoro_onnx'),
-        # espeakng_loader: espeak-ng-data dir + espeak-ng.dll needed for Kokoro phonemization
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'espeakng_loader'), 'espeakng_loader'),
-    ],
+    ] + _metadata_datas,
     hiddenimports=[
         'uvicorn.lifespan.on',
         'uvicorn.protocols.http.auto',
