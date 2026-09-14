@@ -1882,7 +1882,7 @@ def get_clip_context(clip_id: str, format: str = "txt") -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/clip/{clip_id}?format={format}")
+    r = _get(f"/context/clip/{clip_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1899,7 +1899,7 @@ def get_asset_context(asset_id: str, format: str = "txt") -> str:
         asset_id: The assetId from the library (get from get_library).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    r = _get(f"/asset/{asset_id}?format={format}")
+    r = _get(f"/context/asset/{asset_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -1998,7 +1998,7 @@ def describe_clip(clip_id: str) -> str:
         clip_id: The clipId of the clip (get from get_timeline_state).
     """
     try:
-        return json.dumps(_get(f"/clip/{clip_id}/describe"), indent=2)
+        return json.dumps(_get(f"/context/clip/{clip_id}/describe"), indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
             return f"Clip '{clip_id}' not found on any timeline. Call get_timeline_state() to get valid clip IDs."
@@ -2017,7 +2017,7 @@ def describe_selected_clip() -> str:
     depending on the clip type.
     """
     try:
-        r = _get("/selected/describe")
+        r = _get("/context/selected/describe")
         return json.dumps(r, indent=2)
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 404:
