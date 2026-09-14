@@ -109,18 +109,15 @@ def ai_status():
 
 @ai_router.post("/restart")
 async def ai_restart():
-    """Reload the agent from current .env settings without app restart."""
+    """Reset the cached agent so it rebuilds with current os.environ on next request.
+    
+    NOTE: Do NOT re-read .env here. _write_env_file() in project.py already
+    updates os.environ immediately when settings are saved. Re-reading .env
+    with load_dotenv in a PyInstaller build would use the wrong path and
+    override the correct value, reverting the provider back to ollama.
+    """
     import os
-    from pathlib import Path
     try:
-        # Re-read .env so new keys/provider take effect
-        try:
-            from dotenv import load_dotenv
-            _env_path = Path(__file__).resolve().parents[2] / ".env"
-            load_dotenv(_env_path, override=True)
-        except ImportError:
-            pass
-
         from backend.ai.agent import _reset_agent
         _reset_agent()
         provider = os.environ.get("ECHO_AI_PROVIDER", "ollama")
