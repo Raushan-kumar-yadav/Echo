@@ -79,8 +79,8 @@ class CreateVideoRequest(BaseModel):
 @ai_router.get("/status")
 def ai_status():
     import os
-    provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
-    model = os.environ.get("FADE_AI_MODEL", "")
+    provider = os.environ.get("ECHO_AI_PROVIDER", os.environ.get("FADE_AI_PROVIDER", "ollama"))
+    model = os.environ.get("ECHO_AI_MODEL", os.environ.get("FADE_AI_MODEL", ""))
 
     ollama_ok = False
     available_models: list[str] = []
@@ -105,6 +105,30 @@ def ai_status():
         "ollama_running":  ollama_ok,
         "available_models": available_models,
     }
+
+
+@ai_router.post("/restart")
+async def ai_restart():
+    """Reload the agent from current .env settings without app restart."""
+    import os
+    from pathlib import Path
+    try:
+        # Re-read .env so new keys/provider take effect
+        try:
+            from dotenv import load_dotenv
+            _env_path = Path(__file__).resolve().parents[2] / ".env"
+            load_dotenv(_env_path, override=True)
+        except ImportError:
+            pass
+
+        from backend.ai.agent import _reset_agent
+        _reset_agent()
+        provider = os.environ.get("ECHO_AI_PROVIDER", "ollama")
+        model = os.environ.get("ECHO_AI_MODEL", "")
+        return {"ok": True, "provider": provider, "model": model,
+                "message": f"Agent will restart with provider '{provider}' on next message."}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
 
 # /ai/chat   
 

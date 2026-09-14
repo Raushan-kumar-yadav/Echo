@@ -44,28 +44,53 @@ _PREFERRED_MODELS = [
     "mistral:latest",
 ]
 
+# Vision / embedding models that do NOT support tool/function calling.
+_NO_TOOLS_MODELS = [
+    "moondream", "moondream2", "llava", "llava-phi3", "llava-llama3",
+    "bakllava", "minicpm-v", "deepseek-vl", "internvl", "qwen-vl",
+    "nomic-embed-text", "mxbai-embed-large", "all-minilm", "bge-m3",
+]
+
 
 def _detect_ollama_model() -> str:
     """Query Ollama for installed models and pick the best one for tool-calling."""
     try:
         import httpx
         r = httpx.get("http://localhost:11434/api/tags", timeout=3)
-        models = [m["name"] for m in r.json().get("models", [])]
-        if not models:
+        all_models = [m["name"] for m in r.json().get("models", [])]
+
+        def _is_no_tools(name: str) -> bool:
+            n = name.lower()
+            return any(bad in n for bad in _NO_TOOLS_MODELS)
+
+        tool_models = [m for m in all_models if not _is_no_tools(m)]
+
+        if not all_models:
             print("[AI Agent] Ollama has no models installed. Run: ollama pull llama3.2", flush=True)
-            return "llama3.2"   
+            return "llama3.2"
 
-        # pick from preferred list
+        if not tool_models:
+            skipped = ", ".join(all_models)
+            raise RuntimeError(
+                f"Installed Ollama models ({skipped}) are vision/embedding models "
+                f"that do not support tool-calling. Run: ollama pull llama3.2"
+            )
+
+        # Pick from preferred list (tool-capable only)
         for pref in _PREFERRED_MODELS:
-            if pref in models:
+            if pref in tool_models:
                 return pref
-        # fallback: first available
-        print(f"[AI Agent] Using first available Ollama model: {models[0]}", flush=True)
-        return models[0]
 
+        # Fallback: first tool-capable model
+        print(f"[AI Agent] Using first tool-capable Ollama model: {tool_models[0]}", flush=True)
+        return tool_models[0]
+
+    except RuntimeError:
+        raise
     except Exception:
-        print("[AI Agent] Ollama not running â€” defaulting to llama3.2. Start Ollama first.", flush=True)
+        print("[AI Agent] Ollama not running - defaulting to llama3.2. Start Ollama first.", flush=True)
         return "llama3.2"
+
 
 
 def _build_llm():
@@ -156,6 +181,22 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
+        )
+
+    elif provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("OPENROUTER_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: OPENROUTER_API_KEY not set in .env", flush=True)
+        m = model_name or "mistralai/mistral-7b-instruct"
+        print(f"[AI Agent] Using OpenRouter model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+            default_headers={"HTTP-Referer": "https://echo-editor.app", "X-Title": "Echo Editor"},
         )
 
     else:
@@ -787,6 +828,13 @@ def get_agent(port: int = 8000):
         _agent = build_agent(port)
         print("[AI Agent] Ready.", flush=True)
     return _agent
+
+
+def _reset_agent():
+    """Clear the cached agent so it is rebuilt with fresh env on next request."""
+    global _agent
+    _agent = None
+    print("[AI Agent] Agent cache cleared — will rebuild on next /ai/chat request.", flush=True)
 
 
 def get_agent_llm(port: int = 8000):

@@ -168,15 +168,16 @@ async function postEnvSettings(updates: Record<string, string>): Promise<EnvSett
 
 //   Tab IDs  
 
-type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'generators' | 'apis';
+type Tab = 'cache' | 'decoder' | 'output' | 'ai' | 'agent' | 'generators' | 'apis';
 
 const TABS: { id: Tab; icon: string; label: string }[] = [
-  { id: 'cache', icon: '⚡', label: 'Cache'       },
-  { id: 'decoder', icon: '🎞', label: 'Decoder'     },
-  { id: 'output', icon: '🖼', label: 'Output'      },
-  { id: 'ai', icon: '🤖', label: 'AI Indexing' },
+  { id: 'cache',      icon: '⚡', label: 'Cache'       },
+  { id: 'decoder',    icon: '🎞', label: 'Decoder'     },
+  { id: 'output',     icon: '🖼', label: 'Output'      },
+  { id: 'ai',         icon: '🔍', label: 'Indexing'    },
+  { id: 'agent',      icon: '🤖', label: 'Agent AI'    },
   { id: 'generators', icon: '✨', label: 'Generators'  },
-  { id: 'apis', icon: '🔑', label: 'API Keys'     },
+  { id: 'apis',       icon: '🔑', label: 'API Keys'    },
 ];
 
 const GEMINI_VOICES = [
@@ -624,6 +625,262 @@ export default function SettingsPanel({ onClose }: Props) {
               </>
             )}
 
+            {/* ── Agent AI ── */}
+            {tab === 'agent' && (
+              <>
+                {!env ? (
+                  <p className="sp-loading">Loading agent settings…</p>
+                ) : (
+                  <>
+                    <p className="sp-hint">
+                      Choose which AI model powers the agentic editor. Changes take effect after clicking <strong>Restart Agent</strong>.
+                    </p>
+
+                    {/* Provider */}
+                    <div className="sp-subsection-title">🤖 Agent Provider</div>
+
+                    <div className="sp-row">
+                      <label className="sp-label" htmlFor="agent-provider">Provider</label>
+                      <select id="agent-provider" className="sp-select"
+                        value={env.ECHO_AI_PROVIDER?.value || 'ollama'}
+                        onChange={e => applyEnv('ECHO_AI_PROVIDER', e.target.value)}>
+                        <option value="ollama">🖥 Ollama (Local)</option>
+                        <option value="openrouter">🌐 OpenRouter (Free/Paid)</option>
+                        <option value="tokenrouter">🔗 TokenRouter</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="claude">Anthropic Claude</option>
+                        <option value="groq">⚡ Groq (Fast Free)</option>
+                        <option value="tabi">Tabi</option>
+                      </select>
+                    </div>
+
+                    <div className="sp-row">
+                      <label className="sp-label" htmlFor="agent-model">Model Name</label>
+                      <input id="agent-model" className="sp-api-input sp-input--wide"
+                        placeholder={
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'ollama'         ? 'auto-detect' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'openrouter'     ? 'e.g. mistralai/mistral-7b-instruct' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'openai'         ? 'e.g. gpt-4o-mini' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'gemini'         ? 'e.g. gemini-1.5-flash' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'claude'         ? 'e.g. claude-3-5-haiku-20241022' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'groq'           ? 'e.g. llama3-8b-8192' :
+                          (env.ECHO_AI_PROVIDER?.value || 'ollama') === 'tokenrouter'    ? 'e.g. z-ai/glm-5.3-free' :
+                          'model name'
+                        }
+                        defaultValue={env.ECHO_AI_MODEL?.value || ''}
+                        onBlur={e => applyEnv('ECHO_AI_MODEL', e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                      />
+                    </div>
+
+                    {/* Ollama-specific */}
+                    {(env.ECHO_AI_PROVIDER?.value || 'ollama') === 'ollama' && (
+                      <>
+                        <div className="sp-subsection-title">🖥 Ollama Local Server</div>
+                        <div className="sp-row">
+                          <label className="sp-label" htmlFor="agent-ollama-host">Ollama Endpoint</label>
+                          <input id="agent-ollama-host" className="sp-api-input sp-input--wide"
+                            placeholder="http://localhost:11434"
+                            defaultValue={env.OLLAMA_HOST?.value || ''}
+                            onBlur={e => applyEnv('OLLAMA_HOST', e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                        </div>
+                        {gen && gen.ollamaModels.length > 0 && (
+                          <div className="sp-row">
+                            <label className="sp-label">Detected models</label>
+                            <span className="sp-badge sp-badge--info">
+                              {gen.ollamaModels.filter(m => !['moondream','llava','nomic-embed','mxbai'].some(v => m.toLowerCase().includes(v))).join(', ') || 'No tool-capable models'}
+                            </span>
+                          </div>
+                        )}
+                        {gen && gen.ollamaModels.length === 0 && (
+                          <div className="sp-hint sp-hint--warn">
+                            ⚠ Ollama not running or no models installed.<br />
+                            <code>ollama serve</code> then <code>ollama pull llama3.2</code>
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {/* OpenRouter-specific */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'openrouter' && (
+                      <>
+                        <div className="sp-subsection-title">🌐 OpenRouter</div>
+                        <div className="sp-hint sp-hint--info">
+                          Free models available at <a href="https://openrouter.ai/models?q=free" target="_blank" rel="noreferrer" className="sp-link">openrouter.ai/models →</a>.
+                          Get your key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="sp-link">openrouter.ai/keys →</a>
+                        </div>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['OPENROUTER_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env.OPENROUTER_API_KEY?.value || ''}
+                              placeholder="sk-or-..."
+                              onBlur={e => { if (e.target.value !== env.OPENROUTER_API_KEY?.value) applyEnv('OPENROUTER_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, OPENROUTER_API_KEY: !p.OPENROUTER_API_KEY }))}>
+                              {showSecrets['OPENROUTER_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env.OPENROUTER_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env.OPENROUTER_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* TokenRouter-specific */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'tokenrouter' && (
+                      <>
+                        <div className="sp-subsection-title">🔗 TokenRouter</div>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">API Key</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input"
+                              type={showSecrets['TOKENROUTER_API_KEY'] ? 'text' : 'password'}
+                              defaultValue={env.TOKENROUTER_API_KEY?.value || ''}
+                              placeholder="Not set"
+                              onBlur={e => { if (e.target.value !== env.TOKENROUTER_API_KEY?.value) applyEnv('TOKENROUTER_API_KEY', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                            <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, TOKENROUTER_API_KEY: !p.TOKENROUTER_API_KEY }))}>
+                              {showSecrets['TOKENROUTER_API_KEY'] ? '🙈' : '👁'}
+                            </button>
+                            <span className={`sp-api-status ${env.TOKENROUTER_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                              {env.TOKENROUTER_API_KEY?.value ? '✓' : '✗'}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="sp-api-row">
+                          <span className="sp-api-label">Base URL</span>
+                          <div className="sp-api-field">
+                            <input className="sp-api-input" placeholder="https://api.tokenrouter.com/v1"
+                              defaultValue={env.TOKENROUTER_BASE_URL?.value || ''}
+                              onBlur={e => { if (e.target.value !== env.TOKENROUTER_BASE_URL?.value) applyEnv('TOKENROUTER_BASE_URL', e.target.value); }}
+                              onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                            />
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {/* OpenAI key */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'openai' && (
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">OpenAI API Key</span>
+                        <div className="sp-api-field">
+                          <input className="sp-api-input" type={showSecrets['OPENAI_API_KEY'] ? 'text' : 'password'}
+                            defaultValue={env.OPENAI_API_KEY?.value || ''} placeholder="sk-..."
+                            onBlur={e => { if (e.target.value !== env.OPENAI_API_KEY?.value) applyEnv('OPENAI_API_KEY', e.target.value); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                          <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, OPENAI_API_KEY: !p.OPENAI_API_KEY }))}>
+                            {showSecrets['OPENAI_API_KEY'] ? '🙈' : '👁'}
+                          </button>
+                          <span className={`sp-api-status ${env.OPENAI_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                            {env.OPENAI_API_KEY?.value ? '✓' : '✗'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gemini key */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'gemini' && (
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">Google API Key</span>
+                        <div className="sp-api-field">
+                          <input className="sp-api-input" type={showSecrets['GOOGLE_API_KEY'] ? 'text' : 'password'}
+                            defaultValue={env.GOOGLE_API_KEY?.value || ''} placeholder="AIza..."
+                            onBlur={e => { if (e.target.value !== env.GOOGLE_API_KEY?.value) applyEnv('GOOGLE_API_KEY', e.target.value); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                          <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, GOOGLE_API_KEY: !p.GOOGLE_API_KEY }))}>
+                            {showSecrets['GOOGLE_API_KEY'] ? '🙈' : '👁'}
+                          </button>
+                          <span className={`sp-api-status ${env.GOOGLE_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                            {env.GOOGLE_API_KEY?.value ? '✓' : '✗'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Anthropic key */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'claude' && (
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">Anthropic API Key</span>
+                        <div className="sp-api-field">
+                          <input className="sp-api-input" type={showSecrets['ANTHROPIC_API_KEY'] ? 'text' : 'password'}
+                            defaultValue={env.ANTHROPIC_API_KEY?.value || ''} placeholder="sk-ant-..."
+                            onBlur={e => { if (e.target.value !== env.ANTHROPIC_API_KEY?.value) applyEnv('ANTHROPIC_API_KEY', e.target.value); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                          <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, ANTHROPIC_API_KEY: !p.ANTHROPIC_API_KEY }))}>
+                            {showSecrets['ANTHROPIC_API_KEY'] ? '🙈' : '👁'}
+                          </button>
+                          <span className={`sp-api-status ${env.ANTHROPIC_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                            {env.ANTHROPIC_API_KEY?.value ? '✓' : '✗'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Groq key */}
+                    {(env.ECHO_AI_PROVIDER?.value) === 'groq' && (
+                      <div className="sp-api-row">
+                        <span className="sp-api-label">Groq API Key</span>
+                        <div className="sp-api-field">
+                          <input className="sp-api-input" type={showSecrets['GROQ_API_KEY'] ? 'text' : 'password'}
+                            defaultValue={env.GROQ_API_KEY?.value || ''} placeholder="gsk_..."
+                            onBlur={e => { if (e.target.value !== env.GROQ_API_KEY?.value) applyEnv('GROQ_API_KEY', e.target.value); }}
+                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                          />
+                          <button className="sp-api-btn" onClick={() => setShowSecrets(p => ({ ...p, GROQ_API_KEY: !p.GROQ_API_KEY }))}>
+                            {showSecrets['GROQ_API_KEY'] ? '🙈' : '👁'}
+                          </button>
+                          <span className={`sp-api-status ${env.GROQ_API_KEY?.value ? 'sp-api-status--set' : 'sp-api-status--empty'}`}>
+                            {env.GROQ_API_KEY?.value ? '✓' : '✗'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Restart button */}
+                    <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <button
+                        id="agent-restart-btn"
+                        className="sp-btn sp-btn--primary"
+                        style={{ background: 'linear-gradient(135deg,#6c63ff,#00d4aa)', color: '#fff', fontWeight: 600, padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13 }}
+                        onClick={async () => {
+                          const port = getPort();
+                          if (!port) return;
+                          try {
+                            const r = await fetch(`http://127.0.0.1:${port}/ai/restart`, { method: 'POST' });
+                            const j = await r.json();
+                            if (j.ok) {
+                              alert(`✅ Agent restarted with provider: ${j.provider}\nNext message will use the new settings.`);
+                            } else {
+                              alert(`❌ Restart failed: ${j.message}`);
+                            }
+                          } catch (err) {
+                            alert('Failed to reach backend.');
+                          }
+                        }}
+                      >
+                        🔄 Restart Agent
+                      </button>
+                      <span className="sp-hint" style={{ margin: 0, fontSize: 11 }}>
+                        Applies new provider/key/model without restarting the app.
+                      </span>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
             {/* ── Generators ── */}
             {tab === 'generators' && (
               <>
@@ -1044,47 +1301,18 @@ export default function SettingsPanel({ onClose }: Props) {
                 ) : (
                   <>
                     <div className="sp-hint sp-hint--info">
-                      Keys saved to local <code>.env</code> file. Blur field or press Enter to save. Agent restart required for provider changes.
-                    </div>
-
-                    {/* ── AI Provider ── */}
-                    <div className="sp-api-group">
-                      <div className="sp-api-group-title"><span className="sp-api-icon">🤖</span> AI Agent Provider</div>
-                      <div className="sp-api-row">
-                        <span className="sp-api-label">Provider</span>
-                        <div className="sp-api-field">
-                          <select className="sp-select" value={env.ECHO_AI_PROVIDER?.value || 'ollama'}
-                            onChange={e => applyEnv('ECHO_AI_PROVIDER', e.target.value)}>
-                            <option value="ollama">Ollama (Local)</option>
-                            <option value="openai">OpenAI</option>
-                            <option value="gemini">Google Gemini</option>
-                            <option value="claude">Anthropic Claude</option>
-                            <option value="groq">Groq</option>
-                            <option value="tabi">Tabi</option>
-                            <option value="tokenrouter">TokenRouter</option>
-                          </select>
-                        </div>
-                      </div>
-                      <div className="sp-api-row">
-                        <span className="sp-api-label">Model Name</span>
-                        <div className="sp-api-field">
-                          <input className="sp-api-input" placeholder="e.g. gpt-4o-mini, z-ai/glm-5.3-free"
-                            defaultValue={env.ECHO_AI_MODEL?.value || ''}
-                            onBlur={e => applyEnv('ECHO_AI_MODEL', e.target.value)}
-                            onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                          />
-                        </div>
-                      </div>
+                      Keys saved to local <code>.env</code> file. Configure the <strong>Agent AI</strong> tab to change which provider powers the AI editor.
                     </div>
 
                     {/* ── LLM API Keys ── */}
                     <div className="sp-api-group">
                       <div className="sp-api-group-title"><span className="sp-api-icon">🔑</span> LLM API Keys</div>
                       {([
-                        ['OPENAI_API_KEY',    'OpenAI'],
-                        ['GOOGLE_API_KEY',    'Google'],
-                        ['ANTHROPIC_API_KEY', 'Anthropic'],
-                        ['GROQ_API_KEY',      'Groq'],
+                        ['OPENAI_API_KEY',      'OpenAI'],
+                        ['GOOGLE_API_KEY',      'Google'],
+                        ['ANTHROPIC_API_KEY',   'Anthropic'],
+                        ['GROQ_API_KEY',        'Groq'],
+                        ['OPENROUTER_API_KEY',  'OpenRouter'],
                       ] as [string, string][]).map(([key, label]) => (
                         <div className="sp-api-row" key={key}>
                           <span className="sp-api-label">{label} API Key</span>
@@ -1149,8 +1377,8 @@ export default function SettingsPanel({ onClose }: Props) {
                     <div className="sp-api-group">
                       <div className="sp-api-group-title"><span className="sp-api-icon">🌐</span> Custom Base URLs</div>
                       {([
-                        ['ANTHROPIC_BASE_URL', 'Anthropic URL', 'https://api.anthropic.com'],
-                        ['OLLAMA_HOST',        'Ollama Host',   'http://localhost:11434'],
+                        ['ANTHROPIC_BASE_URL',   'Anthropic URL',   'https://api.anthropic.com'],
+                        ['OPENROUTER_BASE_URL',  'OpenRouter URL',  'https://openrouter.ai/api/v1'],
                       ] as [string, string, string][]).map(([key, label, ph]) => (
                         <div className="sp-api-row" key={key}>
                           <span className="sp-api-label">{label}</span>
