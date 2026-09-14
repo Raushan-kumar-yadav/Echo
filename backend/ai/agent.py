@@ -105,7 +105,7 @@ def _build_llm():
             model_name = _detect_ollama_model()
 
         print(f"[AI Agent] Using Ollama model: {model_name}", flush=True)
-        return ChatOllama(model=model_name, temperature=0)
+        return ChatOllama(model=model_name, temperature=0, timeout=120)
 
     elif provider == "tabi":
         # tabitoken.com  
@@ -121,6 +121,7 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
+            timeout=60,
         )
 
     elif provider == "openai":
@@ -130,7 +131,7 @@ def _build_llm():
             print("[AI Agent] WARNING: OPENAI_API_KEY not set in .env", flush=True)
         m = model_name or "gpt-4o-mini"
         print(f"[AI Agent] Using OpenAI model: {m}", flush=True)
-        return ChatOpenAI(model=m, temperature=0, api_key=key or None)
+        return ChatOpenAI(model=m, temperature=0, api_key=key or None, timeout=60)
 
     elif provider == "groq":
         from langchain_groq import ChatGroq
@@ -181,6 +182,7 @@ def _build_llm():
             temperature=0,
             api_key=key,
             base_url=base_url,
+            timeout=60,  # free models can be slow; fail fast instead of hanging forever
         )
 
     elif provider == "openrouter":
@@ -197,6 +199,7 @@ def _build_llm():
             api_key=key,
             base_url=base_url,
             default_headers={"HTTP-Referer": "https://echo-editor.app", "X-Title": "Echo Editor"},
+            timeout=60,
         )
 
     else:

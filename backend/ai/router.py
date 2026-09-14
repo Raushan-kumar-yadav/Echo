@@ -193,9 +193,20 @@ async def ai_chat(req: ChatRequest):
 
         except Exception as e:
             import traceback
-            traceback.print_exc()
+            err_str = str(e)
+            # Classify the error for a friendly user message
+            if any(k in type(e).__name__ for k in ("Timeout", "TimeoutError")):
+                msg = "⏱️ The AI model took too long to respond. The free model may be busy — please try again."
+            elif "429" in err_str or "rate limit" in err_str.lower() or "quota" in err_str.lower():
+                msg = "⚠️ Rate limit reached on the AI model. Wait a moment and try again."
+            elif "connect" in err_str.lower() or "connection" in err_str.lower():
+                msg = "🔌 Could not connect to the AI model. Check your internet connection."
+            else:
+                traceback.print_exc()
+                msg = f"AI error: {err_str}"
+            print(f"[AI Router] error: {msg}", flush=True)
             yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
-            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': msg})}\n\n"
 
     return StreamingResponse(
         event_stream(),
