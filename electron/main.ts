@@ -111,18 +111,38 @@ function loadRenderEngine(): void {
 function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
   if (!renderEngine) return
 
+  // Apply preview scale to compositor dimensions for faster playback
+  const pw = Math.round(width * currentPreviewScale)
+  const ph = Math.round(height * currentPreviewScale)
+  console.log(`[RenderEngine] Init at preview res: ${pw}x${ph} (full: ${width}x${height}, scale: ${currentPreviewScale})`)
+
   // SkSL shaders live at 
   const projectRoot = path.join(__dirname, '..')
   const effectsDir  = path.join(projectRoot, 'backend', 'timeline', 'effects', 'sksl')
                           .replace(/\\/g, '/')   
 
   try {
-    renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
+    renderEngine.initialize(pw, ph, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
     console.log('[RenderEngine] Initialized — effectsDir:', effectsDir, 'port:', pythonPort)
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
+  }
+}
+
+// Full-res init (for export) — does NOT apply preview scale
+function initRenderEngineFullRes(pythonPort: number, width = 1920, height = 1080, fps = 30): void {
+  if (!renderEngine) return
+  const projectRoot = path.join(__dirname, '..')
+  const effectsDir  = path.join(projectRoot, 'backend', 'timeline', 'effects', 'sksl')
+                          .replace(/\\/g, '/')
+  try {
+    renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
+    renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
+    console.log(`[RenderEngine] Full-res init: ${width}x${height} for export`)
+  } catch (e) {
+    console.error('[RenderEngine] Full-res init error:', e)
   }
 }
 
@@ -295,6 +315,13 @@ ipcMain.on('export:start', async (_event, config) => {
 
    
   renderEngine.pause()
+
+  // Re-initialize compositor at full resolution for export
+  // (playback runs at preview res, export needs full res)
+  if (detectedPort) {
+    console.log('[Export] Re-initializing compositor at full 1920x1080 for export')
+    initRenderEngineFullRes(detectedPort, 1920, 1080, 30)
+  }
 
  
   const prevScale = currentPreviewScale  // save BEFORE setting
@@ -578,7 +605,9 @@ ipcMain.on('export:start', async (_event, config) => {
       if (prevScale !== 1.0) {
         currentPreviewScale = renderEngine.setPreviewScale(prevScale)
         console.log('[Export] Restored preview scale to', prevScale)
+        // Re-init compositor at preview resolution for playback
         if (portSnapshot) {
+          initRenderEngine(portSnapshot, 1920, 1080, 30)
           const httpMod2 = require('http') as typeof import('http')
           const body2 = JSON.stringify({ scale: prevScale })
           const req2 = httpMod2.request(

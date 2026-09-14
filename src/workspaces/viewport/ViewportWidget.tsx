@@ -121,15 +121,22 @@ export default function ViewportWidget() {
       const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
 
-      const w = nativeWidthRef.current;
-      const h = nativeHeightRef.current;
+      // Get current compositor dimensions (may change with preview scale)
+      const stats = await api.getRenderStats();
+      const w = stats?.width  ?? nativeWidthRef.current;
+      const h = stats?.height ?? nativeHeightRef.current;
+      const needed = w * h * 4;
+      if (buf.byteLength < needed) return;
+
       if (canvas.width !== w)  canvas.width  = w;
       if (canvas.height !== h) canvas.height = h;
+      nativeWidthRef.current  = w;
+      nativeHeightRef.current = h;
 
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      const rgba = new Uint8ClampedArray(buf, 0, w * h * 4);
+      const rgba = new Uint8ClampedArray(buf, 0, needed);
       ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
 
       frameNumRef.current = frameNum;
@@ -168,7 +175,7 @@ export default function ViewportWidget() {
 
     // Poll for valid port
     const portPollId = setInterval(() => {
-      const p: number = (window as any).__FADE_PORT__ ?? 0
+      const p: number = (window as any).__ECHO_PORT__ ?? 0
       if (p && p !== currentPort) {
         currentPort = p
         engine.updatePort(p)
@@ -213,7 +220,7 @@ export default function ViewportWidget() {
       }, 200);
     }
 
-    const knownPort: number | null = (window as any).__FADE_PORT__;
+    const knownPort: number | null = (window as any).__ECHO_PORT__;
     if (knownPort) {
       startPolling(knownPort);
     } else {
@@ -316,7 +323,7 @@ export default function ViewportWidget() {
     const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
     setPreviewFormat(next);
     try {
-      const port = (window as any).__FADE_PORT__ ?? 8000;
+      const port = (window as any).__ECHO_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/preview/format`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
