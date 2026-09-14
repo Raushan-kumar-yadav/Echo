@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+﻿import { BrowserWindow } from 'electron'
 
 interface WebCompInstance {
   win: BrowserWindow
@@ -110,7 +110,7 @@ export async function captureFrame(
         window.FADE_FPS = ${inst.fps};
         window.FADE_WIDTH = ${inst.width};
         window.FADE_HEIGHT = ${inst.height};
-        window.dispatchEvent(new CustomEvent('echo:frame', {
+        window.dispatchEvent(new CustomEvent('fade:frame', {
           detail: { frame: ${frame}, time: ${frame / inst.fps} }
         }));
       `)
@@ -172,7 +172,7 @@ export function updateParams(
   inst.frameCache.clear()
   inst.win.webContents.executeJavaScript(`
     window.FADE_PARAMS = ${JSON.stringify(params)};
-    window.dispatchEvent(new CustomEvent('echo:params', {
+    window.dispatchEvent(new CustomEvent('fade:params', {
       detail: ${JSON.stringify(params)}
     }));
   `).catch(() => {})
@@ -200,11 +200,7 @@ export function destroyAll(): void {
   for (const id of instances.keys()) destroyWebComp(id)
 }
 
-/**
- * Returns the IDs and dimensions of every WebComp instance that is still alive.
- * Used by the export cleanup path to re-seed frame 0 into the C++ compositor
- * after setPreviewScale re-initializes and wipes the WebComp frame buffer.
- */
+ 
 export function getActiveInstances(): Array<{ webcompId: string; width: number; height: number }> {
   const result: Array<{ webcompId: string; width: number; height: number }> = []
   for (const [id, inst] of instances.entries()) {
