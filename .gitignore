@@ -11,6 +11,12 @@ renderer/deps/ffmpeg/lib/
 renderer/deps/skia/lib/
 backend/media/decoder/ffmpeg/
 
+# Production build output
+dist-app/
+pyinstaller-dist/
+pyinstaller-build/
+Echo-*.zip
+
  
 __pycache__/
 *.py[cod]

@@ -97,6 +97,14 @@ class WorkerBus:
             self._process.join(timeout=5)
             if self._process.is_alive():
                 self._process.terminate()
+                self._process.join(timeout=2)
+        # Free any active index slots that were held when the worker died
+        # so the bus doesn't get stuck when restarted
+        with self._index_lock:
+            leaked = list(self._active_index_ids)
+            self._active_index_ids.clear()
+        for aid in leaked:
+            print(f"[WorkerBus] stop: freeing leaked index slot {aid[:8]}", flush=True)
         self._waveform_pool.shutdown(wait=False)
         print("[WorkerBus] stopped", flush=True)
 
@@ -110,9 +118,22 @@ class WorkerBus:
             if self._process and not self._process.is_alive():
                 exit_code = self._process.exitcode
                 print(
-                    f"[WorkerBus] sandbox process died (exit={exit_code}) — restarting",
+                    f"[WorkerBus] sandbox process died (exit={exit_code}) — freeing slots & restarting",
                     flush=True,
                 )
+                # Free any index slots held at crash time
+                with self._index_lock:
+                    leaked = list(self._active_index_ids)
+                    self._active_index_ids.clear()
+                for aid in leaked:
+                    try:
+                        from backend.worker import index_cache as _ic
+                        _ic.set_error(aid, "worker process died unexpectedly")
+                        from backend.routers.jobs import complete_asset_job
+                        complete_asset_job(aid, "video_index", error="worker died")
+                    except Exception:
+                        pass
+                    print(f"[WorkerBus] watchdog: freed slot for {aid[:8]}", flush=True)
                 self.start()
 
     def is_alive(self) -> bool:
@@ -226,12 +247,10 @@ class WorkerBus:
         ffmpeg_exe = shutil.which("ffmpeg") or ""
         if not ffmpeg_exe:
             _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            _candidates = [
+            for c in [
                 os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe"),
-                r"D:\ffmpeg\FFmpeg\ffmpeg.exe",
-                r"C:\ffmpeg\bin\ffmpeg.exe",
-            ]
-            for c in _candidates:
+                os.path.join(_root, "renderer", "build", "Release", "ffmpeg.exe"),
+            ]:
                 if os.path.isfile(c):
                     ffmpeg_exe = c
                     break

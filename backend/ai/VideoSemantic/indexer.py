@@ -1,16 +1,22 @@
 import chromadb
-from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
-# Scratch DB — used when no project is saved yet (keeps data out of the source tree)
+# sentence_transformers requires torch which may not be bundled in packaged builds
+try:
+    from sentence_transformers import SentenceTransformer as _ST
+    _embedder = _ST("all-MiniLM-L6-v2")  # CPU-only, ~80 MB
+except Exception as _e:
+    print(f"[indexer] sentence_transformers unavailable ({_e}) — semantic search disabled", flush=True)
+    _embedder = None
+
+# Scratch DB — used when no project is saved yet
 _SCRATCH_DB_PATH = str(Path.home() / ".echo" / "chroma_db")
-_DEFAULT_DB_PATH = _SCRATCH_DB_PATH  # alias used by legacy callers
-_embedder = SentenceTransformer("all-MiniLM-L6-v2")  # CPU-only, 80 MB
+_DEFAULT_DB_PATH = _SCRATCH_DB_PATH
 
 # Active clients
 _client: chromadb.PersistentClient = None
-_col = None      # video_segments
-_img_col = None  # image_assets
+_col = None
+_img_col = None
 
 
 def _ensure_client(db_path: str | None = None) -> None:
@@ -29,8 +35,11 @@ def _ensure_client(db_path: str | None = None) -> None:
     print(f"[ChromaDB] Using DB at: {path}", flush=True)
 
 
-# Initialise with the default path on import
-_ensure_client()
+# Initialise with the default path on import (non-fatal if chromadb fails)
+try:
+    _ensure_client()
+except Exception as _ce:
+    print(f"[ChromaDB] Init failed (non-fatal): {_ce}", flush=True)
 
 
 def switch_db(db_path: str) -> None:
@@ -62,6 +71,9 @@ def is_asset_indexed(asset_id: str) -> bool:
 def index_video(asset_id: str, chunks: list[dict]) -> int:
     if not chunks:
         print(f"[ChromaDB] No chunks to index for {asset_id[:8]}", flush=True)
+        return 0
+    if _embedder is None:
+        print("[ChromaDB] Skipping index_video — embedder not available (torch missing)", flush=True)
         return 0
 
     total = len(chunks)
@@ -164,7 +176,8 @@ def _col_count(col) -> int:
 
 def search_videos(query: str, top_k: int = 5) -> list[dict]:
     global _col
-     
+    if _embedder is None:
+        return []   # torch not available
     try:
         cnt = _col.count() if _col is not None else 0
     except Exception:
@@ -172,13 +185,12 @@ def search_videos(query: str, top_k: int = 5) -> list[dict]:
         cnt = 0
 
     if cnt == 0:
-        return []   # not indexed yet 
+        return []
 
     q_emb = _embedder.encode([query]).tolist()
     try:
         results = _col.query(query_embeddings=q_emb, n_results=min(top_k, cnt))
     except Exception:
-        # HNSW index missing/corrupt  
         _try_heal_collection("video_segments")
         try:
             cnt2 = _col.count() if _col is not None else 0
@@ -220,6 +232,9 @@ def index_image(asset_id: str, description: str) -> bool:
     if not description.strip():
         print(f"[ChromaDB] Empty description for image {asset_id[:8]}, skipping", flush=True)
         return False
+    if _embedder is None:
+        print("[ChromaDB] Skipping index_image — embedder not available (torch missing)", flush=True)
+        return False
 
     embedding = _embedder.encode([description]).tolist()
     _img_col.upsert(
@@ -235,6 +250,8 @@ def index_image(asset_id: str, description: str) -> bool:
 
 def search_images(query: str, top_k: int = 5) -> list[dict]:
     global _img_col
+    if _embedder is None:
+        return []   # torch not available
     try:
         cnt = _img_col.count() if _img_col is not None else 0
     except Exception:

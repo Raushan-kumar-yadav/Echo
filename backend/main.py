@@ -8,18 +8,26 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
- 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
-_FFMPEG_DIRS = [
-    str(_PROJECT_ROOT / "tools" / "ffmpeg"),   # bundled  
-    r"D:\ffmpeg\FFmpeg",                         
-    r"C:\Users\raush\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-9.0-full_build\bin",  # fallback B
+import sys as _sys_early
+
+# ── Resolve project/resource root (works in dev AND PyInstaller frozen bundle) ──
+if getattr(_sys_early, 'frozen', False):
+    # PyInstaller: _MEIPASS is the extracted bundle temp dir
+    _RESOURCE_ROOT = Path(_sys_early._MEIPASS)  # type: ignore[attr-defined]
+else:
+    _RESOURCE_ROOT = Path(__file__).resolve().parent.parent
+
+# ── FFmpeg discovery (NO hardcoded user paths) ────────────────────────────────
+_FFMPEG_CANDIDATES = [
+    str(_RESOURCE_ROOT / "tools" / "ffmpeg"),           # bundled alongside app
+    str(_RESOURCE_ROOT / "renderer" / "build" / "Release"),  # C++ build output
 ]
-for _d in _FFMPEG_DIRS:
+for _d in _FFMPEG_CANDIDATES:
     if os.path.isdir(_d) and _d not in os.environ.get("PATH", ""):
         os.environ["PATH"] = _d + os.pathsep + os.environ.get("PATH", "")
         print(f"[main] Added ffmpeg to PATH: {_d}", flush=True)
-        break   
+        break
+# If neither bundled location exists, ffmpeg must be on system PATH already
 
 faulthandler.enable()
 
@@ -32,6 +40,11 @@ if sys.stderr and hasattr(sys.stderr, 'buffer') and getattr(sys.stderr, 'encodin
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace', line_buffering=True)
 
 sys.setswitchinterval(0.001)
+
+if __name__ == "__main__":
+    # REQUIRED for PyInstaller + multiprocessing.spawn on Windows
+    import multiprocessing as _mp
+    _mp.freeze_support()
 
 import asyncio
 import concurrent.futures
@@ -293,9 +306,7 @@ app.include_router(virality.router)  # virality predictor + social connections
 from fastapi.responses import FileResponse as _FileResponse
 import pathlib as _pathlib
 
-_RUNTIME_JS = (
-    _pathlib.Path(__file__).parent.parent / "templates" / "webcomps" / "_runtime" / "echo-react.js"
-)
+_RUNTIME_JS = _RESOURCE_ROOT / "templates" / "webcomps" / "_runtime" / "echo-react.js"
 
 @app.get("/runtime/echo-react.js", include_in_schema=False)
 async def serve_runtime_js():
