@@ -68,79 +68,58 @@ export default function ViewportWidget() {
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
- 
+  // The canvas receives decoded  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioEngine | null>(null);
- 
+
+  // Local frame ref updated on every native frame event  
   const frameNumRef = useRef<number>(0);
- 
+  // Throttled React state update  
   const lastStateFrameRef = useRef<number>(-1);
 
- 
+  // Native render engine 
   const [isNativeRender, setIsNativeRender] = useState(false);
   const nativeBufferRef = useRef<ArrayBuffer | null>(null);
   const nativeWidthRef  = useRef(1920);
   const nativeHeightRef = useRef(1080);
- 
+  // Reactive canvas dimensions  
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
- 
+  // Sync WebComp offscreen windows and push frames into C++ cache
   useWebCompSync();
 
- 
-  // Try to detect native render engine (may already be ready or may come later)
-  const initNativeRender = useCallback(async () => {
-    const api = (window as any).electronAPI;
-    if (!api?.isNativeRender) return;
-    const isNative = await api.isNativeRender();
-    console.log('[ViewportWidget] isNativeRender:', isNative);
-    if (!isNative) return;
-    setIsNativeRender(true);
-    const buf = await api.getRenderBuffer();
-    console.log('[ViewportWidget] getRenderBuffer:', buf ? `ArrayBuffer(${buf.byteLength})` : 'null');
-    if (buf) nativeBufferRef.current = buf;
-    const stats = await api.getRenderStats();
-    console.log('[ViewportWidget] getRenderStats:', stats);
-    if (stats) {
-      nativeWidthRef.current  = stats.width;
-      nativeHeightRef.current = stats.height;
-      setNativeDims({ w: stats.width, h: stats.height });
-    }
-  }, []);
-
-  // Check on mount
-  useEffect(() => { initNativeRender(); }, [initNativeRender]);
-
-  // Also check when engine becomes ready (deferred init)
+  // Check if native addon is available and cache the SharedArrayBuffer
   useEffect(() => {
     const api = (window as any).electronAPI;
-    if (!api?.onEngineReady) return;
-    const cleanup = api.onEngineReady(() => {
-      initNativeRender();
+    if (!api?.isNativeRender) return;
+    api.isNativeRender().then(async (isNative: boolean) => {
+      if (!isNative) return;
+      setIsNativeRender(true);
+      const buf = await api.getRenderBuffer();
+      if (buf) nativeBufferRef.current = buf;
+      const stats = await api.getRenderStats();
+      if (stats) {
+        nativeWidthRef.current  = stats.width;
+        nativeHeightRef.current = stats.height;
+        // Drive canvas element size reactively so putImageData fills it correctly
+        setNativeDims({ w: stats.width, h: stats.height });
+      }
     });
-    return cleanup;
-  }, [initNativeRender]);
+  }, []);
 
- 
+  // Subscribe to frame-ready events  
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
     if (!api?.onFrameReady) return;
-    let _frameDbg = 0;
+
     const cleanup = api.onFrameReady(async (frameNum: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Fetch a fresh copy of the pixel buffer from the main process each frame.
-      // Electron IPC always serializes (structured clone), so the renderer process
-      // cannot hold a live pointer to the C++ buffer — we must re-fetch.
-      const buf = await api.getRenderBuffer();
+      // Get fresh pixel buffer from native compositor 
+      const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
-
-      if (_frameDbg < 3) {
-        _frameDbg++;
-        console.log(`[ViewportWidget] onFrameReady #${_frameDbg} frame=${frameNum} bufSize=${buf.byteLength}`);
-      }
 
       const w = nativeWidthRef.current;
       const h = nativeHeightRef.current;
@@ -189,7 +168,7 @@ export default function ViewportWidget() {
 
     // Poll for valid port
     const portPollId = setInterval(() => {
-      const p: number = (window as any).__ECHO_PORT__ ?? 0
+      const p: number = (window as any).__FADE_PORT__ ?? 0
       if (p && p !== currentPort) {
         currentPort = p
         engine.updatePort(p)
@@ -234,7 +213,7 @@ export default function ViewportWidget() {
       }, 200);
     }
 
-    const knownPort: number | null = (window as any).__ECHO_PORT__;
+    const knownPort: number | null = (window as any).__FADE_PORT__;
     if (knownPort) {
       startPolling(knownPort);
     } else {
@@ -337,7 +316,7 @@ export default function ViewportWidget() {
     const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
     setPreviewFormat(next);
     try {
-      const port = (window as any).__ECHO_PORT__ ?? 8000;
+      const port = (window as any).__FADE_PORT__ ?? 8000;
       await fetch(`http://127.0.0.1:${port}/preview/format`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

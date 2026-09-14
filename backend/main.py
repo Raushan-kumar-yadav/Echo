@@ -69,6 +69,7 @@ from backend.routers import (
     animation,
     jobs,
     debug,
+    virality,
 )
 
 
@@ -229,7 +230,8 @@ async def lifespan(app: FastAPI):
     threading.Thread(target=_run_tcp_server, daemon=True, name="tcp-frame-server").start()
 
 
-     
+    # Pre-warm Kokoro TTS model in background (first load downloads ~170MB + ONNX init).
+    # This prevents the agent's 30-second HTTP timeout from firing on the first TTS call.
     def _prewarm_kokoro():
         try:
             from backend.config.global_config import cfg as _cfg
@@ -285,6 +287,7 @@ app.include_router(search.router)
 app.include_router(context.router)
 app.include_router(debug.router)    # animation diagnostics: /debug/anim-*
 app.include_router(scene_tools.router)  # scene search / clip description tools
+app.include_router(virality.router)  # virality predictor + social connections
 
  
 from fastapi.responses import FileResponse as _FileResponse
@@ -327,23 +330,9 @@ async def sse_events(request: Request):
 
 
 def _findFreePort(start: int = 8000, end: int = 8010) -> int:
-    # If the launcher requested a specific port, try it first — but VERIFY it's free.
-    # On Windows, a just-crashed process holds its port for several seconds (TIME_WAIT).
-    # If the preferred port is busy we fall through and pick the next available one.
-    env_port = os.environ.get("BACKEND_PORT")
-    if env_port:
-        try:
-            preferred = int(env_port)
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                s.bind(("127.0.0.1", preferred))
-                return preferred
-        except (ValueError, OSError):
-            pass  # port busy — fall through to scan
     for port in range(start, end + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             try:
-                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 s.bind(("127.0.0.1", port))
                 return port
             except OSError:
@@ -352,17 +341,8 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 
 
 if __name__ == "__main__":
-    import multiprocessing as _mp
-    _mp.freeze_support()  # Required for PyInstaller: must be first line in __main__
-
     port = _findFreePort()
     os.environ["BACKEND_PORT"] = str(port)
     print(f"[Echo] Backend starting on port {port}", flush=True)
     print(f"[Echo] Python {sys.version.split()[0]} | skia + subprocess-ffmpeg ready", flush=True)
-    uvicorn.run(
-        app,
-        host="127.0.0.1",
-        port=port,
-        log_level="warning",
-    )
-
+    uvicorn.run(app, host="127.0.0.1", port=port, log_level="warning")

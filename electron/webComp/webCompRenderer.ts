@@ -1,4 +1,4 @@
-﻿import { BrowserWindow } from 'electron'
+import { BrowserWindow } from 'electron'
 
 interface WebCompInstance {
   win: BrowserWindow
@@ -9,12 +9,13 @@ interface WebCompInstance {
   frameCache: Map<number, Buffer>
   ready: boolean
   readyPromise: Promise<void>
- 
+  // Serializes concurrent captures: only one executeJavaScript+capturePage
+  // runs at a time per instance, preventing FADE_FRAME races.
   captureQueue: Promise<Buffer | null>
 }
 
 const instances = new Map<string, WebCompInstance>()
-const MAX_CACHE_FRAMES = 360  
+const MAX_CACHE_FRAMES = 360  // ~12 s at 30fps; JS-side LRU before C++ cache fills
 
 export async function createWebComp(
   webcompId: string, htmlUrl: string,
@@ -39,7 +40,8 @@ export async function createWebComp(
     },
   })
 
-   win.webContents.on('dom-ready', () => {
+  // Inject transparent CSS before page loads
+  win.webContents.on('dom-ready', () => {
     win.webContents.insertCSS(
       'html, body { background: transparent !important; margin: 0; padding: 0; overflow: hidden; }'
     ).catch(() => {})
@@ -71,7 +73,8 @@ export async function createWebComp(
   instances.set(webcompId, inst)
   console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
 
-   await readyPromise
+  // Wait for page to finish loading so the first capture attempt always succeeds
+  await readyPromise
   inst.ready = true
   console.log(`[WebComp] Ready ${webcompId}`)
 }
@@ -86,22 +89,27 @@ export async function captureFrame(
   // Wait for page to finish loading on first capture
   if (!inst.ready) await inst.readyPromise
 
-  // JS-side LRU cache hit  
+  // JS-side LRU cache hit — no Chrome round-trip needed
   if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
- 
+
+  // ── Serialize captures through a per-instance queue ─────────────────────
+  // Only ONE executeJavaScript+capturePage sequence runs at a time.
+  // Without this, concurrent callers can race on window.FADE_FRAME:
+  //   caller A sets FADE_FRAME=5, caller B immediately sets FADE_FRAME=10,
+  //   caller A's capturePage() gets frame 10 — silently wrong pixels.
   const doCapture = async (): Promise<Buffer | null> => {
-    // Re-check cache inside the queue  
+    // Re-check cache inside the queue (another caller may have captured it)
     if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
     if (inst.win.isDestroyed()) return null
 
     try {
       // Inject frame number into the page
       await inst.win.webContents.executeJavaScript(`
-        window.ECHO_FRAME = ${frame};
-        window.ECHO_TIME = ${frame / inst.fps};
-        window.ECHO_FPS = ${inst.fps};
-        window.ECHO_WIDTH = ${inst.width};
-        window.ECHO_HEIGHT = ${inst.height};
+        window.FADE_FRAME = ${frame};
+        window.FADE_TIME = ${frame / inst.fps};
+        window.FADE_FPS = ${inst.fps};
+        window.FADE_WIDTH = ${inst.width};
+        window.FADE_HEIGHT = ${inst.height};
         window.dispatchEvent(new CustomEvent('echo:frame', {
           detail: { frame: ${frame}, time: ${frame / inst.fps} }
         }));
@@ -117,7 +125,8 @@ export async function captureFrame(
       const size = nativeImage.getSize()
       const bgra = nativeImage.toBitmap()
 
-       const rgba = Buffer.alloc(size.width * size.height * 4)
+      // Swizzle BGRA → RGBA (Chromium outputs BGRA, Skia expects RGBA)
+      const rgba = Buffer.alloc(size.width * size.height * 4)
       for (let i = 0; i < size.width * size.height; i++) {
         const o = i * 4
         rgba[o + 0] = bgra[o + 2]  // R ← B
@@ -140,7 +149,8 @@ export async function captureFrame(
     }
   }
 
-   const result = inst.captureQueue.then(doCapture, doCapture)
+  // Chain this capture AFTER any in-flight one; the queue itself never rejects.
+  const result = inst.captureQueue.then(doCapture, doCapture)
   inst.captureQueue = result.then(() => null, () => null)  // advance queue silently
   return result
 }
@@ -161,7 +171,7 @@ export function updateParams(
   /* Clear cached frames  */
   inst.frameCache.clear()
   inst.win.webContents.executeJavaScript(`
-    window.ECHO_PARAMS = ${JSON.stringify(params)};
+    window.FADE_PARAMS = ${JSON.stringify(params)};
     window.dispatchEvent(new CustomEvent('echo:params', {
       detail: ${JSON.stringify(params)}
     }));
@@ -190,7 +200,11 @@ export function destroyAll(): void {
   for (const id of instances.keys()) destroyWebComp(id)
 }
 
- 
+/**
+ * Returns the IDs and dimensions of every WebComp instance that is still alive.
+ * Used by the export cleanup path to re-seed frame 0 into the C++ compositor
+ * after setPreviewScale re-initializes and wipes the WebComp frame buffer.
+ */
 export function getActiveInstances(): Array<{ webcompId: string; width: number; height: number }> {
   const result: Array<{ webcompId: string; width: number; height: number }> = []
   for (const [id, inst] of instances.entries()) {

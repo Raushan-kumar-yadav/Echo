@@ -1,9 +1,7 @@
 from __future__ import annotations
 import os
-import shutil
 import subprocess
 import threading
-import time
 import uuid
 from typing import TYPE_CHECKING
 
@@ -12,26 +10,9 @@ if TYPE_CHECKING:
     from backend.timeline.timeline import Timeline
 
 
-def _safe_rename(src: str, dst: str, retries: int = 5, delay: float = 0.3) -> None:
-    """Rename src → dst with retries for Windows WinError 32 (file still held open)."""
-    for attempt in range(retries):
-        try:
-            os.replace(src, dst)   
-            return
-        except OSError:
-            if attempt < retries - 1:
-                time.sleep(delay)
-            else:
-                # Last resort: copy then delete
-                shutil.copy2(src, dst)
-                try:
-                    os.remove(src)
-                except OSError:
-                    pass
-
-
-
-  
+# ──────────────────────────────────────────────────────────────────────────────
+# Encoder auto-detection
+# ──────────────────────────────────────────────────────────────────────────────
 
 def detect_encoder() -> str:
     candidates = ["h264_nvenc", "h264_qsv", "libx264"]
@@ -59,7 +40,10 @@ def _cached_encoder() -> str:
     return _ENCODER_CACHE
 
 
- 
+# ──────────────────────────────────────────────────────────────────────────────
+# ExportJob — tracks state of one export run
+# ──────────────────────────────────────────────────────────────────────────────
+
 class ExportJob:
     def __init__(self, settings: dict) -> None:
         self.jobId    = str(uuid.uuid4())
@@ -92,21 +76,24 @@ class ExportJob:
             "path":    self.path,
         }
 
-  
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Main export runner — called from background thread
+# ──────────────────────────────────────────────────────────────────────────────
 
 def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -> None:
-    s = job.settings
-    width = s.get("width", 1920)
-    height = s.get("height", 1080)
-    fps = s.get("fps",             30.0)
-    codec = s.get("codec", "auto")
-    vbr = s.get("videoBitrate", "8M")
-    crf = s.get("crf", -1)
-    preset = s.get("preset", "medium")
-    abr = s.get("audioBitrate", "192k")
-    audio_sr = s.get("audioSampleRate", 48000)
-    audio_ch = s.get("audioChannels",   2)
-    out = s.get("outputPath", "output.mp4")
+    s               = job.settings
+    width           = s.get("width",           1920)
+    height          = s.get("height",          1080)
+    fps             = s.get("fps",             30.0)
+    codec           = s.get("codec",           "auto")
+    vbr             = s.get("videoBitrate",    "8M")
+    crf             = s.get("crf",             -1)
+    preset          = s.get("preset",          "medium")
+    abr             = s.get("audioBitrate",    "192k")
+    audio_sr        = s.get("audioSampleRate", 48000)
+    audio_ch        = s.get("audioChannels",   2)
+    out             = s.get("outputPath",      "output.mp4")
 
     if codec == "auto":
         codec = _cached_encoder()
@@ -124,7 +111,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         job.done  = True
         return
 
-    # Ensure the output directory exists  
+    # Ensure the output directory exists — FFmpeg cannot create parent directories
     out_dir = os.path.dirname(os.path.abspath(out))
     os.makedirs(out_dir, exist_ok=True)
 
@@ -143,7 +130,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         "-pix_fmt", "yuv420p",
     ]
 
-    # Quality mode:  
+    # Quality mode: CRF preferred over bitrate for CPU encoders
     cpu_encoders = ("libx264", "libx265")
     if crf >= 0 and codec in cpu_encoders:
         ffmpeg_cmd += ["-crf", str(crf), "-preset", preset]
@@ -255,9 +242,10 @@ def _mux_audio_v2(
                 "volume": volume,
             })
 
-    # No audio
-    _safe_rename(video_path, out_path)
-    return
+    # No audio  
+    if not audio_clips:
+        os.rename(video_path, out_path)
+        return
 
     # Build FFmpeg command with complex filter graph
     inputs = ["-i", video_path]
@@ -265,7 +253,7 @@ def _mux_audio_v2(
         inputs += ["-i", c["path"]]
 
     filter_parts: list[str] = []
-    mix_labels: list[str] = []
+    mix_labels:   list[str] = []
 
     for i, c in enumerate(audio_clips):
         src = f"[{i + 1}:a]"
@@ -311,10 +299,10 @@ def _mux_audio_v2(
     ]
     result = subprocess.run(cmd, capture_output=True)
     if result.returncode != 0:
-        # Fallback
+        # Fallback 
         print(f"[encoder] _mux_audio_v2 failed: {result.stderr.decode(errors='replace')[-400:]}")
         try:
-            _safe_rename(video_path, out_path)
+            os.rename(video_path, out_path)
         except Exception:
             pass
 

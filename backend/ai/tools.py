@@ -14,8 +14,6 @@ def _base() -> str:
 
 def _get(path: str) -> dict:
     r = httpx.get(f"{_base()}{path}", timeout=10)
-    if r.status_code == 404:
-        return None  # caller should handle missing resource gracefully
     r.raise_for_status()
     return r.json()
 
@@ -1578,12 +1576,12 @@ def create_webcomp(
       script.js   ← written from your `js` argument
 
     GLOBALS INJECTED EACH FRAME by Electron:
-      window.ECHO_FRAME   — current frame number (int, 0-indexed)
-      window.ECHO_TIME    — current time in seconds (float)
-      window.ECHO_FPS     — project FPS
-      window.ECHO_WIDTH   — canvas width  (1920)
-      window.ECHO_HEIGHT  — canvas height (1080)
-      window.ECHO_PARAMS  — runtime params from the inspector panel (object)
+      window.FADE_FRAME   — current frame number (int, 0-indexed)
+      window.FADE_TIME    — current time in seconds (float)
+      window.FADE_FPS     — project FPS
+      window.FADE_WIDTH   — canvas width  (1920)
+      window.FADE_HEIGHT  — canvas height (1080)
+      window.FADE_PARAMS  — runtime params from the inspector panel (object)
 
     LISTEN FOR FRAME EVENTS in script.js:
       window.addEventListener('echo:frame', (e) => {
@@ -1591,8 +1589,8 @@ def create_webcomp(
         // your animation code here
       });
 
-    ECHO REACT (Remotion-style) — available with NO import needed:
-      const { useCurrentFrame, interpolate, spring, mount, EchoComposition } = window.EchoReact;
+    FADE REACT (Remotion-style) — available with NO import needed:
+      const { useCurrentFrame, interpolate, spring, mount, FadeComposition } = window.EchoReact;
 
     Args:
         name: Human-readable name for the WebComp
@@ -1713,10 +1711,10 @@ def edit_webcomp_file(webcomp_id: str, filename: str, content: str) -> str:
 
 @tool
 def set_webcomp_params(clip_id: str, params: dict) -> str:
-    """Set runtime params on a WebComp clip (drives window.ECHO_PARAMS in the page).
+    """Set runtime params on a WebComp clip (drives window.FADE_PARAMS in the page).
 
     Params appear in the inspector panel and are injected into the WebComp page
-    as window.ECHO_PARAMS. Match keys to the param schema in webcomp.json.
+    as window.FADE_PARAMS. Match keys to the param schema in webcomp.json.
 
     Example: set_webcomp_params("clip-123", {"text": "Hello", "color": "#ff0000"})
 
@@ -1901,16 +1899,7 @@ def get_asset_context(asset_id: str, format: str = "txt") -> str:
         asset_id: The assetId from the library (get from get_library).
         format: "txt" for human-readable (default), "json" for structured data.
     """
-    try:
-        r = _get(f"/asset/{asset_id}?format={format}")
-    except Exception as e:
-        return f"[get_asset_context] Request failed: {e}"
-    if r is None:
-        return (
-            f"Asset '{asset_id}' has no indexed context yet. "
-            "It may still be indexing — check get_index_status(asset_id) "
-            "and wait until status is 'done' before calling this tool."
-        )
+    r = _get(f"/asset/{asset_id}?format={format}")
     if isinstance(r, str):
         return r
     return json.dumps(r, indent=2)
@@ -2778,7 +2767,7 @@ ALL_TOOLS.extend(TTS_TOOLS)
 def stop_indexing(asset_id: str) -> str:
     """Stop / cancel semantic indexing for a specific media asset.
 
-    Echo automatically starts AI indexing (Vision + Whisper) when a video or image
+    Fade automatically starts AI indexing (Vision + Whisper) when a video or image
     is downloaded or imported. On low-end systems, or for B-roll footage that doesn't
     need semantic search, you can stop the job using this tool.
 

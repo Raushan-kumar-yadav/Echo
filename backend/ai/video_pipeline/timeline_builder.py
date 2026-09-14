@@ -1,7 +1,7 @@
-﻿"""
+"""
 backend/ai/video_pipeline/timeline_builder.py
-Builds the Echo timeline from a ScenePlan + resolved asset map.
-Calls Echo's existing REST API endpoints.
+Builds the Fade timeline from a ScenePlan + resolved asset map.
+Calls Fade's existing REST API endpoints.
 """
 from __future__ import annotations
 import httpx
@@ -108,7 +108,7 @@ def build_timeline(
     progress_cb: Callable[[str], None] | None = None,
 ) -> dict:
     """
-    Iterates scenes and calls Echo REST endpoints to build the full timeline.
+    Iterates scenes and calls Fade REST endpoints to build the full timeline.
 
     Returns summary dict: {placed_clips, failed_scenes}
     """

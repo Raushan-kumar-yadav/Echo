@@ -1,4 +1,4 @@
-﻿/**
+/**
  * OverlayCanvas.tsx — After Effects style tool overlay
  *
  * Modes:

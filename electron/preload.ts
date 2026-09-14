@@ -15,7 +15,6 @@ export interface ElectronAPI {
   renderSetPreviewScale: (scale: number) => void
   getRenderBuffer: () => Promise<ArrayBuffer | null>
   onFrameReady: (cb: (frameNum: number) => void) => () => void
-  onEngineReady: (cb: () => void) => () => void
   getRenderStats: () => Promise<{ width: number; height: number; fps: number; bufferSize: number } | null>
 
   // export
@@ -92,12 +91,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const handler = (_event: Electron.IpcRendererEvent, frameNum: number) => cb(frameNum)
     ipcRenderer.on('render:frame-ready', handler)
     return () => ipcRenderer.removeListener('render:frame-ready', handler)
-  },
-
-  onEngineReady: (cb: () => void): (() => void) => {
-    const handler = () => cb()
-    ipcRenderer.on('render:engine-ready', handler)
-    return () => ipcRenderer.removeListener('render:engine-ready', handler)
   },
 
   //   Export  

@@ -1,6 +1,6 @@
 
 from __future__ import annotations
-import queue
+import multiprocessing
 import threading
 import os
 from concurrent.futures import ThreadPoolExecutor
@@ -13,16 +13,13 @@ from backend.worker import index_cache
 
 class WorkerBus:
     def __init__(self) -> None:
-        # Use stdlib queue.Queue (thread-safe) instead of multiprocessing.Queue.
-        # multiprocessing.Queue uses OS pipes + DuplicateHandle, which fails
-        # with WinError 5 when Python is a child of Electron on Windows.
-        self._job_queue:    queue.Queue = queue.Queue()
-        self._result_queue: queue.Queue = queue.Queue()
-        self._cancel_queue: queue.Queue = queue.Queue()
-        self._process:  Optional[threading.Thread] = None
+        self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
+        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()  # carries asset_ids to cancel
+        self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
-
+         
         self._waveform_pool = ThreadPoolExecutor(
             max_workers=3, thread_name_prefix="EchoWaveform"
         )
@@ -32,13 +29,18 @@ class WorkerBus:
         if self._process and self._process.is_alive():
             return  # already running
 
-        import sys
-        parent_syspath = sys.path[:]
+        import sys, os
+        parent_syspath = sys.path[:]    
+
+       
+        if sys.platform == "win32" and getattr(sys, "executable", "").lower().endswith(".exe"):
+            python_exe = os.path.join(sys.exec_prefix, "python.exe")
+            if os.path.exists(python_exe) and sys.executable.lower() != python_exe.lower():
+                multiprocessing.set_executable(python_exe)
 
         self._running = True
-        # Use a thread instead of a subprocess to avoid Windows
-        # DuplicateHandle/WinError 5 when Electron spawns Python.
-        self._process = threading.Thread(
+        ctx = multiprocessing.get_context("spawn")
+        self._process = ctx.Process(
             target=sandbox_worker.worker_main,
             args=(self._job_queue, self._result_queue, self._cancel_queue, parent_syspath),
             daemon=True,
@@ -60,7 +62,6 @@ class WorkerBus:
             name="EchoWorkerWatchdog",
         )
         self._watchdog_thread.start()
-
         print("[WorkerBus] sandbox worker started", flush=True)
 
     def submit(self, job: dict) -> None:
@@ -78,19 +79,22 @@ class WorkerBus:
             pass
         if self._process:
             self._process.join(timeout=5)
+            if self._process.is_alive():
+                self._process.terminate()
         self._waveform_pool.shutdown(wait=False)
         print("[WorkerBus] stopped", flush=True)
 
     def _watchdog(self) -> None:
-        """Restart the sandbox thread if it dies unexpectedly."""
+        """Restart the sandbox process if it dies unexpectedly."""
         import time
         while self._running:
             time.sleep(10)
             if not self._running:
                 break
             if self._process and not self._process.is_alive():
+                exit_code = self._process.exitcode
                 print(
-                    "[WorkerBus] sandbox thread died — restarting",
+                    f"[WorkerBus] sandbox process died (exit={exit_code}) — restarting",
                     flush=True,
                 )
                 self.start()
@@ -142,13 +146,18 @@ class WorkerBus:
         index_cache.set_pending(asset_id)
 
         import shutil
-         
-        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        _bundled = os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe")
-        if os.path.isfile(_bundled):
-            ffmpeg_exe = _bundled
-        else:
-            ffmpeg_exe = shutil.which("ffmpeg") or "ffmpeg"  
+        ffmpeg_exe = shutil.which("ffmpeg") or ""
+        if not ffmpeg_exe:
+            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            _candidates = [
+                os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe"),
+                r"D:\ffmpeg\FFmpeg\ffmpeg.exe",
+                r"C:\ffmpeg\bin\ffmpeg.exe",
+            ]
+            for c in _candidates:
+                if os.path.isfile(c):
+                    ffmpeg_exe = c
+                    break
 
         from backend.config.global_config import cfg as _cfg
         vision_model   = _cfg.get("ai.vision_model",   "moondream:latest")
@@ -194,14 +203,19 @@ class WorkerBus:
         })
 
     def cancel_index(self, asset_id: str) -> None:
-         
+        """Signal the sandbox worker to stop indexing a specific asset.
+
+        Works for both queued (not started yet) and actively running jobs:
+        - Marks index_cache as 'cancelled' so the pending-check at job start fires.
+        - Sends asset_id through the cancel queue so the running frame loop exits early.
+        """
         from backend.worker import index_cache
         index_cache.set_cancelled(asset_id)
         try:
             self._cancel_queue.put_nowait(asset_id)
         except Exception:
             pass
-        
+        # Complete any SSE job card for this asset so the UI updates
         try:
             from backend.routers.jobs import complete_asset_job
             complete_asset_job(asset_id, "video_index", error=None)
@@ -341,7 +355,7 @@ class WorkerBus:
             target=self._check_and_resume_bg,
             args=(db_path, port),
             daemon=True,
-            name="FadeResumeCheck",
+            name="EchoResumeCheck",
         ).start()
 
     def _check_and_resume_bg(self, db_path: str, port: int) -> None:
@@ -404,4 +418,5 @@ class WorkerBus:
         print(f"[WorkerBus] check_and_resume: {queued_vision} vision + {queued_transcript} transcript + {queued_audio} audio jobs queued", flush=True)
 
 
+# Global singleton
 bus = WorkerBus()

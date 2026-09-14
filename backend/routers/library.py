@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 from pathlib import Path
 from fastapi import APIRouter, HTTPException

@@ -36,14 +36,24 @@ type RenderEngine = {
 
 let renderEngine: RenderEngine | null = null
 
- 
-let currentPreviewScale = 0.5  
- 
+// ── JS-side mirror of g_previewScale ───────────────────────────────────────
+// The C++ setPreviewScale returns the NEW value (after clamping), not the old
+// one. So we track it here in JS, defaulting to 0.5 (C++ default) and updating
+// it on every call through main.ts. The export loop reads this to know what
+// scale to restore after export finishes.
+let currentPreviewScale = 0.5 // mirrors g_previewScale in RenderEngineAddon.cpp
+
+// ── Viewport frame-ready callback ───────────────────────────────────────
+// Stored so the export loop's finally block can restore it after hijacking it
+// to drive frame-by-frame rendering. Without this the viewport goes dark after
+// export and the user has to restart.
 const viewportFrameReadyCb = (frameNum: number) => {
   mainWindow?.webContents.send('render:frame-ready', frameNum)
 }
 
- 
+// ── Detect best H.264 encoder available in the bundled FFmpeg ────────────────
+// The bundled build has --disable-libx264, so we must pick an alternative.
+// Priority: h264_nvenc (NVIDIA) → h264_amf (AMD) → h264_mf (Win MediaFoundation)
 let _detectedCodec: string | null = null
 function detectH264Codec(ffmpegExe: string): string {
   if (_detectedCodec) return _detectedCodec
@@ -73,7 +83,11 @@ function loadRenderEngine(): void {
     return
   }
 
- 
+  // ── Ensure bundled FFmpeg is on PATH so the C++ addon's _popen("ffmpeg ...") works
+  // Electron's process inherits a stripped PATH that often excludes user-installed tools.
+  // The C++ encoder calls _popen("ffmpeg -y ... pipe:0 output.mp4", "wb") — if `ffmpeg`
+  // isn't found, cmd.exe starts fine (so _popen returns non-NULL) but exits immediately,
+  // all fwrite() calls go to a dead pipe, and the file is never created.
   const releaseBinDir = path.join(__dirname, '..', 'renderer', 'build', 'Release')
   const currentPath = process.env.PATH ?? ''
   if (!currentPath.includes(releaseBinDir)) {
@@ -81,7 +95,8 @@ function loadRenderEngine(): void {
     console.log('[RenderEngine] Prepended FFmpeg dir to PATH:', releaseBinDir)
   }
 
-   detectH264Codec(path.join(releaseBinDir, 'ffmpeg.exe'))
+  // Probe available encoders now so it's ready before the first export
+  detectH264Codec(path.join(releaseBinDir, 'ffmpeg.exe'))
 
   try {
     // eslint-disable-next-line  
@@ -105,11 +120,6 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
     renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
     console.log('[RenderEngine] Initialized — effectsDir:', effectsDir, 'port:', pythonPort)
-    // Notify the frontend that the native render engine is now available
-    // (needed because initRenderEngine is deferred until TCP server is up)
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send('render:engine-ready')
-    }
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
@@ -135,7 +145,8 @@ function sendPort(port: number) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('backend:port', port)
   }
-  // NOTE: initRenderEngine is called later, once TCP server is confirmed up
+  // Initialize native render engine once Python is ready
+  initRenderEngine(port)
 }
 
 // Python backend  
@@ -151,31 +162,17 @@ function startPython(): void {
     env: {
       ...process.env,
       PYTHONPATH: projectRoot + (process.env.PYTHONPATH ? ';' + process.env.PYTHONPATH : ''),
-      BACKEND_PORT: '8000',
       OPENBLAS_NUM_THREADS: '1',
       OMP_NUM_THREADS: '1',
       MKL_NUM_THREADS: '1',
     },
   })
 
-  let _pendingPort: number | null = null
-
   pyProcess.stdout?.on('data', (d: Buffer) => {
     const line = d.toString().trim()
     console.log('[PY]', line)
-
-    // Phase 1: detect HTTP port, tell frontend
     const m = line.match(/starting on port (\d+)/)
-    if (m) {
-      _pendingPort = parseInt(m[1], 10)
-      sendPort(_pendingPort)
-    }
-
-    // Phase 2: once TCP frame server is up, init C++ renderer
-    if (_pendingPort && line.includes('Frame server listening')) {
-      initRenderEngine(_pendingPort)
-      _pendingPort = null
-    }
+    if (m) sendPort(parseInt(m[1], 10))
   })
 
   pyProcess.stderr?.on('data', (d: Buffer) => {
@@ -189,25 +186,10 @@ function startPython(): void {
     const wasIntentional = pyKilledByUs || appQuitting
     console.log('[PY] exited — code:', code, '| intentional:', wasIntentional)
     pyKilledByUs  = false
-    detectedPort  = null
+    detectedPort  = null    
     if (!wasIntentional && code !== 0) {
-      console.log('[PY] crashed — killing stale port holders then restarting in 3 s…')
-       
-      try {
-        const { execSync } = require('child_process')
-        for (let p = 8000; p <= 8005; p++) {
-          try {
-            const out = execSync(`netstat -ano | findstr :${p}`, { encoding: 'utf8', stdio: ['pipe','pipe','pipe'] })
-            for (const line of out.split('\n')) {
-              const m = line.trim().match(/\s+(\d+)\s*$/)
-              if (m && parseInt(m[1]) > 4) {
-                execSync(`taskkill /PID ${m[1]} /F`, { stdio: 'ignore' })
-              }
-            }
-          } catch { /* port not in use — fine */ }
-        }
-      } catch { /* ignore */ }
-      setTimeout(startPython, 3000)
+      console.log('[PY] crashed — restarting in 2 s…')
+      setTimeout(startPython, 2000)
     }
   })
 
@@ -268,7 +250,7 @@ ipcMain.on('render:pause', () => renderEngine?.pause())
 ipcMain.handle('render:get-buffer', () => renderEngine?.getSharedBuffer() ?? null)
 ipcMain.handle('render:get-stats',  () => renderEngine?.getStats() ?? null)
 ipcMain.handle('render:is-native',  () => renderEngine !== null)
- 
+// Keep JS scale tracker in sync when the renderer process sets preview scale
 ipcMain.on('render:set-preview-scale', (_, scale: number) => {
   if (renderEngine) {
     currentPreviewScale = renderEngine.setPreviewScale(scale)
@@ -336,7 +318,8 @@ ipcMain.on('export:start', async (_event, config) => {
   await pyScaleReset
 
 
-   interface WcExportClip {
+  // Clips available to the export loop for just-in-time C++ cache pushes
+  interface WcExportClip {
     webcompId: string; startFrame: number; endFrame: number;
     mediaOffset: number; width: number; height: number;
   }
@@ -376,13 +359,13 @@ ipcMain.on('export:start', async (_event, config) => {
         }>
         const assetMap = new Map(assetList.map(a => [a.assetId, a]))
 
- 
+        // Populate hoisted wcExportClips so the export loop can do JIT pushes
         for (const clip of clips) {
           const asset = assetMap.get(clip.webcompId)
           wcExportClips.push({
-            webcompId: clip.webcompId,
+            webcompId:   clip.webcompId,
             startFrame:  clip.startFrame,
-            endFrame: clip.endFrame,
+            endFrame:    clip.endFrame,
             mediaOffset: clip.mediaOffset,
             width:  asset?.width  ?? config.width  ?? 1920,
             height: asset?.height ?? config.height ?? 1080,
@@ -483,7 +466,8 @@ ipcMain.on('export:start', async (_event, config) => {
 
     console.log(`[Export] Codec: ${exportCodec}  Bitrate: ${exportBr}  Size: ${width}x${height}  FPS: ${fps}`)
 
-     const ffArgs = [
+    // Spawn FFmpeg reading rawvideo RGBA from stdin
+    const ffArgs = [
       '-y',
       '-f', 'rawvideo', '-vcodec', 'rawvideo', '-pix_fmt', 'rgba',
       '-s', `${width}x${height}`, '-r', String(fps),
@@ -538,7 +522,11 @@ ipcMain.on('export:start', async (_event, config) => {
         if (exportCancelled) { exportError = 'Cancelled'; break }
         if (ffExited) { exportError = `FFmpeg exited early (code ${ffExitCode}): ${ffStderr.slice(-400)}`; break }
 
-   
+        // ── Just-in-time WebComp push ────────────────────────────────────
+        // Push each active clip's frame to the C++ cache RIGHT BEFORE seekFrame.
+        // This sidesteps the 1GB LRU eviction problem: Phase 0 already filled
+        // the per-instance JS cache (360 frames each), so captureFrame() is a
+        // fast memory read — no new Chromium round-trip needed.
         for (const wcc of wcExportClips) {
           if (f >= wcc.startFrame && f < wcc.endFrame) {
             const localFrame = Math.max(0, (f - wcc.startFrame) + wcc.mediaOffset)
@@ -548,7 +536,7 @@ ipcMain.on('export:start', async (_event, config) => {
                 ;(renderEngine as any).pushWebCompFrame(
                   wcc.webcompId, localFrame, rgba, wcc.width, wcc.height
                 )
-              } catch {  }
+              } catch { /* non-fatal — compositor continues without this frame */ }
             }
           }
         }
@@ -562,7 +550,8 @@ ipcMain.on('export:start', async (_event, config) => {
 
          
         const rawBuf = renderEngine.getSharedBuffer()
-         const frameBytes = Buffer.from(rawBuf, 0, Math.min(frameByteSize, rawBuf.byteLength))
+        // The buffer may be preview-scaled; slice to exact frame size
+        const frameBytes = Buffer.from(rawBuf, 0, Math.min(frameByteSize, rawBuf.byteLength))
 
         // Write to FFmpeg stdin; respect backpressure
         const ok = ffProc.stdin!.write(frameBytes)
@@ -726,10 +715,12 @@ ipcMain.on('export:start', async (_event, config) => {
             } else {
               exportError = `Audio mux failed (${muxExit}): ${muxStderr.slice(-400)}`
               console.error('[Export][Audio] Mux failed:', exportError)
-               try { if (!fs.existsSync(exportConfig.outputPath)) fs.renameSync(tmpVideoPath, exportConfig.outputPath) } catch { /**/ }
+              // Restore video-only so user isn't left with nothing
+              try { if (!fs.existsSync(exportConfig.outputPath)) fs.renameSync(tmpVideoPath, exportConfig.outputPath) } catch { /**/ }
             }
           } else {
-             fs.renameSync(tmpVideoPath, exportConfig.outputPath)
+            // No valid audio clips after filtering; restore video-only
+            fs.renameSync(tmpVideoPath, exportConfig.outputPath)
             console.log('[Export][Audio] No audio clips to mux, video-only kept')
           }
         } else {
@@ -737,7 +728,8 @@ ipcMain.on('export:start', async (_event, config) => {
         }
       } catch (audioErr) {
         console.warn('[Export][Audio] Audio mux error (non-fatal):', audioErr)
-       }
+        // Audio mux failing is non-fatal; user gets video-only
+      }
     } else if (exitCode === 0 && !exportError) {
       console.log('[Export] Done (video only — no port for audio fetch):', exportConfig.outputPath)
     }
@@ -811,10 +803,15 @@ ipcMain.on('webcomp:destroy', (_, webcompId: string) => {
 })
 
 
- 
+// ─── WebComp push-to-native ───────────────────────────────────────────────────
+// IMPORTANT: the C++ compositor looks up WebComp frames via:
+//   tryGetCachedFrame(clip.file, clip.sourceFrame)
+// where clip.sourceFrame = (timelineFrame - clip.startFrame) + mediaOffset = localFrame.
+// Therefore we MUST cache by localFrame, NOT by timelineFrame.
+// Passing timelineFrame here was the original cache-key mismatch bug.
 ipcMain.handle('webcomp:push-to-native', async (
   _, webcompId: string, localFrame: number, width: number, height: number,
-  _timelineFrame?: number  
+  _timelineFrame?: number   // kept in IPC signature for compat; not used as cache key
 ) => {
   const rgba = await captureFrame(webcompId, localFrame)
   if (rgba && renderEngine) {
@@ -852,7 +849,7 @@ ipcMain.handle('dialog:open', async (_event, opts) => {
   const result = await dialog.showOpenDialog(mainWindow, {
     title: opts?.title,
     properties: opts?.properties ?? ['openFile'],
-    filters: opts?.filters ?? (opts?.properties?.includes('openDirectory') ? [] : [{ name: 'Echo Project', extensions: ['echo'] }]),
+    filters: opts?.filters ?? (opts?.properties?.includes('openDirectory') ? [] : [{ name: 'Echo Project', extensions: ['fade'] }]),
     defaultPath: opts?.defaultPath,
   })
   return result.canceled ? undefined : result.filePaths[0]

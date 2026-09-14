@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 import os
 import json
 import time
@@ -187,7 +187,7 @@ def post_to_platform(
     tags: str = "",
     privacy: str = "public",
 ) -> str:
-    """Export the current Echo project and publish it to a social platform in one step.
+    """Export the current Fade project and publish it to a social platform in one step.
 
     This is the single post-it command that orchestrates export then upload.
     Steps: (1) export timeline to project folder, (2) wait for completion, (3) upload.

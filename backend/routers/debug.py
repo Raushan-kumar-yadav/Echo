@@ -5,7 +5,8 @@ from pydantic import BaseModel
 router = APIRouter()
 
 
- 
+# Toggle per-frame logging  
+
 class DebugToggle(BaseModel):
     enabled: bool = True
     every_n: int  = 1    

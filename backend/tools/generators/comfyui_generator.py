@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import uuid
 import time
@@ -80,7 +80,7 @@ def _build_workflow(
         },
         "9": {
             "inputs": {
-                "filename_prefix": "fade_gen",
+                "filename_prefix": "echo_gen",
                 "images": ["8", 0],
             },
             "class_type": "SaveImage",
@@ -149,7 +149,7 @@ class ComfyUIImageGenerator:
                 cwd=str(comfyui_dir),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                # Windows: create new process group so it survives Echo restart
+                # Windows: create new process group so it survives Fade restart
                 creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
             )
 
@@ -198,7 +198,7 @@ class ComfyUIImageGenerator:
         Generate images via ComfyUI.
 
         If ComfyUI is not running and *comfyui_path* points to the ComfyUI
-        installation folder (the one that contains main.py), Echo will start
+        installation folder (the one that contains main.py), Fade will start
         it automatically and wait up to 90 s for it to be ready.
 
         Returns: [{"filepath": str, "title": str}]

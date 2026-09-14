@@ -7,7 +7,7 @@ from backend.worker.worker_bus import bus as _worker_bus
 
 router = APIRouter()
 
-_audio_cache_dir = os.path.join(tempfile.gettempdir(), "fade_audio_cache")
+_audio_cache_dir = os.path.join(tempfile.gettempdir(), "echo_audio_cache")
 os.makedirs(_audio_cache_dir, exist_ok=True)
 
 

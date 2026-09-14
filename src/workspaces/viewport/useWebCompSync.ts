@@ -1,4 +1,4 @@
-﻿ 
+ 
 import { useEffect, useRef } from 'react';
 
 interface WcClip {
@@ -13,7 +13,7 @@ interface WcClip {
 }
 
 function base(): string {
-  return `http://127.0.0.1:${(window as any).__ECHO_PORT__ ?? 8000}`;
+  return `http://127.0.0.1:${(window as any).__FADE_PORT__ ?? 8000}`;
 }
 
  

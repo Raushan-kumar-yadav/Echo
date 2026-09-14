@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 import os
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -450,7 +450,7 @@ def timelineState():
 def _runtime_script_tag() -> str:
      
     port = int(os.environ.get("BACKEND_PORT", 8000))
-    return f'<script src="http://127.0.0.1:{port}/runtime/echo-react.js"></script>'
+    return f'<script src="http://127.0.0.1:{port}/runtime/fade-react.js"></script>'
 
 
 def _build_index_html(name: str, css_file: bool = True, html_body: str = "") -> str:
@@ -477,18 +477,18 @@ def _build_index_html(name: str, css_file: bool = True, html_body: str = "") -> 
 def _patch_runtime_in_html(content: str) -> str:
     """Fix runtime script references in a template's index.html.
 
-    Replaces ANY src pointing to echo-react.js with the canonical HTTP URL:
-      http://127.0.0.1:PORT/runtime/echo-react.js
+    Replaces ANY src pointing to fade-react.js with the canonical HTTP URL:
+      http://127.0.0.1:PORT/runtime/fade-react.js
 
     Also strips unpkg/jsdelivr CDN scripts and Google Fonts links.
     """
     import re
     port = int(os.environ.get("BACKEND_PORT", 8000))
-    correct_url = f"http://127.0.0.1:{port}/runtime/echo-react.js"
+    correct_url = f"http://127.0.0.1:{port}/runtime/fade-react.js"
 
-    # Replace ANY src pointing to echo-react.js  
+    # Replace ANY src pointing to fade-react.js  
     content = re.sub(
-        r'src=["\'][^"\']*/echo-react\.js["\']',
+        r'src=["\'][^"\']*/fade-react\.js["\']',
         f'src="{correct_url}"',
         content,
     )
@@ -521,15 +521,15 @@ body { width: 1920px; height: 1080px; overflow: hidden; background: transparent;
     with open(os.path.join(folder, "script.js"), "w", encoding="utf-8") as f:
         f.write("""// Fade WebComp — write your animation logic here.
 // Globals injected each frame:
-//   window.ECHO_FRAME  — current frame index (int)
-//   window.ECHO_TIME   — current time in seconds (float)
-//   window.ECHO_FPS    — project fps
-//   window.ECHO_PARAMS — runtime params from the inspector (object)
-window.addEventListener('echo:frame', (e) => {
+//   window.FADE_FRAME  — current frame index (int)
+//   window.FADE_TIME   — current time in seconds (float)
+//   window.FADE_FPS    — project fps
+//   window.FADE_PARAMS — runtime params from the inspector (object)
+window.addEventListener('fade:frame', (e) => {
   const { frame, time } = e.detail;
   // TODO: animate
 });
-window.addEventListener('echo:params', (e) => {
+window.addEventListener('fade:params', (e) => {
   const params = e.detail;
   // TODO: react to inspector param changes
 });

@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import TitleBar from './components/TitleBar'
 import SettingsPanel from './components/SettingsPanel'
 import CreateProjectModal from './components/createProjectModal.'
@@ -36,10 +36,10 @@ function LoadingOverlay({ message }: { message: string }) {
         border: '3px solid rgba(255,255,255,0.15)',
         borderTopColor: '#7c6fff',
         borderRadius: '50%',
-        animation: 'fade-spin 0.8s linear infinite',
+        animation: 'echo-spin 0.8s linear infinite',
       }} />
       <div style={{ fontSize: 15, opacity: 0.85 }}>{message}</div>
-      <style>{`@keyframes fade-spin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`@keyframes echo-spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

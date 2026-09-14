@@ -1,5 +1,5 @@
 {
-    "name":  "fade",
+    "name":  "echo",
     "version":  "1.0.0",
     "description":  "AI Video Editor - SIH",
     "main":  "dist-electron/main.js",

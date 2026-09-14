@@ -1,4 +1,4 @@
-﻿"""
+"""
 Video Generator — supports Google Veo (cloud) and local Ollama video models.
 
 Provider selection is driven by global_config generators.video_provider:
