@@ -18,6 +18,7 @@ DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")
 
 
 _device_cache: tuple[str, str] | None = None
+_model_cache:  dict = {}
 
 
 def _detect_device() -> tuple[str, str]:
