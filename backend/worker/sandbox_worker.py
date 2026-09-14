@@ -111,12 +111,12 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
 
     with tempfile.TemporaryDirectory() as tmp_dir:
 
-        # ── Extract frames ───────────────────────────────────────────────────
+        #   Extract frames  
         frames = extractFrame(filepath, tmp_dir, frame_interval, ffmpeg_exe=ffmpeg_exe or None)
         if not frames:
             raise RuntimeError("ffmpeg extracted 0 frames")
 
-        # ── Cancel check ─────────────────────────────────────────────────────
+        # Cancel check  
         def _is_cancelled() -> bool:
             if cancel_queue is None:
                 return False
@@ -137,11 +137,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         if _is_cancelled():
             raise _IndexCancelled(f"Indexing cancelled before vision phase: {asset_id[:8]}")
 
-        # ── Phase 1: Vision (sequential — avoids concurrent CUDA init crash) ─
-        # NOTE: Do NOT run vision + whisper in parallel threads.
-        # Both faster-whisper (CTranslate2) and sentence_transformers (torch)
-        # try to initialize CUDA. Concurrent CUDA init from threads causes a
-        # fatal access violation that kills the entire worker process.
+         
         import os as _os
         from backend.ai.VideoSemantic.descriptions import describe_frame, _get_provider_config
 
@@ -175,12 +171,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
             if desc:
                 scenes.append({"text": desc, "start": ts, "end": ts + frame_interval})
 
-            # ── Streaming batch-save ────────────────────────────────────────
-            # Upsert every BATCH_SAVE_EVERY successfully described frames so
-            # the AI agent can search partial results during long indexing jobs
-            # (e.g. 30-min video = 300 frames = 10-15 min to describe).
-            # Each call overwrites the previous batch IDs (sequential from 0)
-            # so there are no duplicates — only fresh, consistent data.
+             
             if scenes and len(scenes) % BATCH_SAVE_EVERY == 0:
                 _partial = merge_and_chunk(scenes, [], window_sec=4.0)
                 index_video(asset_id, _partial)
@@ -204,7 +195,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
 
         print(f"[SandboxWorker] Phase 1 complete — {len(scenes)}/{total_frames} frames described", flush=True)
 
-        # Index vision-only chunks immediately so search works before transcript
+         
         vision_chunks = merge_and_chunk(scenes, [], window_sec=4.0)
         count = index_video(asset_id, vision_chunks)
         print(f"[SandboxWorker] Phase 1 saved — {count} vision chunks (transcript pending…)", flush=True)
@@ -217,7 +208,7 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         if _is_cancelled():
             raise _IndexCancelled("Cancelled after vision phase")
 
-        # ── Phase 2: Whisper transcription (runs AFTER vision, not concurrent) ─
+         
         print(f"[SandboxWorker] Phase 2: transcribing {filepath}", flush=True)
         transcript: list[dict] = []
         try:
@@ -374,8 +365,7 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         return 0
 
 
-    # Save to ChromaDB video_segments using the indexer's embedding strategy
-    # (sentence_transformers if available, chromadb ONNX fallback otherwise)
+     
     from backend.ai.VideoSemantic.indexer import _col, _upsert
     if _col is None:
         print(f"[SandboxWorker] transcribe_audio: ChromaDB not ready — skipping save", flush=True)
@@ -464,18 +454,18 @@ def worker_main(job_queue: multiprocessing.Queue,
             ffmpeg_exe   = job.get("ffmpeg_exe", "")
             vision_model = job.get("vision_model", "")
             frame_interval = float(job.get("frame_interval", 4.0))
-            # NOTE: We intentionally do NOT call switch_db(db_path) here.
-            # The sandbox worker is a separate OS process sharing the same
-            # ChromaDB directory as the main process would cause concurrent
-            # Rust HNSW access → segfault → backend.exe exits with code 1.
-            # Instead, the sandbox always writes to the scratch DB
-            # (~/.echo/chroma_db). The main process migrates scratch →
-            # project via _migrate_chroma_to_project() on next save.
-            from backend.worker import transcript_status as _ts
+           
             db_path = job.get("db_path", "")
             if db_path:
-                _ts.set_db_path(db_path)   # only transcript_status uses this
-            # Skip jobs that were cancelled before they got to run
+                # Switch sandbox indexer to the project DB so batch saves are
+                # immediately searchable in the project. The main process guards
+                # against concurrent access via bus.is_indexing_active() — it
+                # skips ChromaDB reads/heals while this subprocess is active.
+                from backend.ai.VideoSemantic.indexer import switch_db as _sw
+                _sw(db_path)
+                from backend.worker import transcript_status as _ts
+                _ts.set_db_path(db_path)
+             
             from backend.worker import index_cache as _ic
             if _ic.is_cancelled(asset_id):
                 print(f"[SandboxWorker] Skipping cancelled index_video job: {asset_id[:8]}", flush=True)

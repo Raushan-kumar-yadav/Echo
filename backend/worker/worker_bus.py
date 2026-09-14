@@ -32,6 +32,15 @@ class WorkerBus:
         self._index_waiting: deque[dict] = deque()     # jobs waiting for a slot
         self._max_concurrent_index: int = 2            # default; overridden by config
 
+    def is_indexing_active(self) -> bool:
+        """True while any vision or transcript indexing job is running in the sandbox.
+
+        Used by project.py to skip ChromaDB reads/heals during indexing to prevent
+        concurrent multi-process Rust HNSW access (which causes a code-1 segfault).
+        """
+        with self._index_lock:
+            return len(self._active_index_ids) > 0
+
     def start(self) -> None:
         if self._process and self._process.is_alive():
             return  # already running

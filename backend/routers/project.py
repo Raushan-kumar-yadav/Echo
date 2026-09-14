@@ -259,7 +259,15 @@ def saveProject(req: SaveRequest):
 
     #   ChromaDB  
     all_asset_ids = set(media_assets.keys()) | {d.get("assetId", "") for d in wc_dicts}
-    chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
+    from backend.worker.worker_bus import bus as _bus
+    if _bus.is_indexing_active():
+        # Sandbox subprocess has exclusive write access to project ChromaDB right now.
+        # Reading/healing from the main process concurrently causes a Rust HNSW
+        # segfault → backend.exe exits with code 1. Skip safely and use last count.
+        chroma_chunks = proj_dict.get("chromaDbChunks", 0)
+        print(f"[Project] ChromaDB access deferred (indexing active) — cached count: {chroma_chunks}", flush=True)
+    else:
+        chroma_chunks = _migrate_chroma_to_project(proj_folder, all_asset_ids)
     proj_dict["chromaDbBundled"] = True
     proj_dict["chromaDbChunks"] = chroma_chunks
 
