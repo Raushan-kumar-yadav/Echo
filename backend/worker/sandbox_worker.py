@@ -464,12 +464,17 @@ def worker_main(job_queue: multiprocessing.Queue,
             ffmpeg_exe   = job.get("ffmpeg_exe", "")
             vision_model = job.get("vision_model", "")
             frame_interval = float(job.get("frame_interval", 4.0))
+            # NOTE: We intentionally do NOT call switch_db(db_path) here.
+            # The sandbox worker is a separate OS process sharing the same
+            # ChromaDB directory as the main process would cause concurrent
+            # Rust HNSW access → segfault → backend.exe exits with code 1.
+            # Instead, the sandbox always writes to the scratch DB
+            # (~/.echo/chroma_db). The main process migrates scratch →
+            # project via _migrate_chroma_to_project() on next save.
+            from backend.worker import transcript_status as _ts
             db_path = job.get("db_path", "")
             if db_path:
-                from backend.ai.VideoSemantic.indexer import switch_db as _sw
-                _sw(db_path)
-                from backend.worker import transcript_status as _ts
-                _ts.set_db_path(db_path)
+                _ts.set_db_path(db_path)   # only transcript_status uses this
             # Skip jobs that were cancelled before they got to run
             from backend.worker import index_cache as _ic
             if _ic.is_cancelled(asset_id):

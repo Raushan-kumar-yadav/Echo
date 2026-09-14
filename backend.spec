@@ -64,6 +64,14 @@ _rust_d,   _rust_b,   _rust_h     = safe_collect('chromadb_rust_bindings')
 _fw_d,     _fw_b,     _fw_h       = safe_collect('faster_whisper')
 _ct2_d,    _ct2_b,    _ct2_h      = safe_collect('ctranslate2')
 _ow_d,     _ow_b,     _ow_h       = safe_collect('whisper')
+# sentence_transformers: Tier-1 semantic embedder for ChromaDB indexing
+_st_d,     _st_b,     _st_h       = safe_collect('sentence_transformers')
+_tok_d,    _tok_b,    _tok_h      = safe_collect('tokenizers')
+# nvidia CUDA packages: provide cublas64_12.dll, cudnn64_9.dll, etc.
+# Required by ctranslate2 for GPU-accelerated Whisper transcription.
+_nvcublas_d, _nvcublas_b, _nvcublas_h = safe_collect('nvidia.cublas')
+_nvcudnn_d,  _nvcudnn_b,  _nvcudnn_h  = safe_collect('nvidia.cudnn')
+_nvnvrtc_d,  _nvnvrtc_b,  _nvnvrtc_h  = safe_collect('nvidia.cuda_nvrtc')
 
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
@@ -71,7 +79,7 @@ a = Analysis(
     binaries=[
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
-    ] + _chroma_b + _rust_b + _fw_b + _ct2_b + _ow_b,
+    ] + _chroma_b + _rust_b + _fw_b + _ct2_b + _ow_b + _nvcublas_b + _nvcudnn_b + _nvnvrtc_b + _st_b + _tok_b,
     datas=[
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
@@ -81,7 +89,7 @@ a = Analysis(
         # jsonschema_specifications ships JSON schemas loaded at import time
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'jsonschema_specifications' / 'schemas'),
          'jsonschema_specifications/schemas'),
-    ] + _metadata_datas + _chroma_d + _rust_d + _fw_d + _ct2_d + _ow_d,
+    ] + _metadata_datas + _chroma_d + _rust_d + _fw_d + _ct2_d + _ow_d + _st_d + _tok_d + _nvcublas_d + _nvcudnn_d + _nvnvrtc_d,
     hiddenimports=[
         'uvicorn.lifespan.on',
         'uvicorn.protocols.http.auto',
@@ -130,10 +138,10 @@ a = Analysis(
         'av',
         'aiofiles',
         'dotenv',
-    ] + _chroma_h + _rust_h,
+    ] + _chroma_h + _rust_h + _fw_h + _ct2_h + _ow_h + _st_h + _tok_h + _nvcublas_h + _nvcudnn_h + _nvnvrtc_h,
     hookspath=[],
     runtime_hooks=[],
-    excludes=['torch','torchvision','torchaudio','tensorflow','sentence_transformers','matplotlib','tkinter','wx','PyQt5','PyQt6'],
+    excludes=['torch','torchvision','torchaudio','tensorflow','matplotlib','tkinter','wx','PyQt5','PyQt6'],
     cipher=block_cipher,
     noarchive=False,
 )
