@@ -54,6 +54,11 @@
                 "filter": ["**/*"]
             },
             {
+                "from": "AIModels/kokoro",
+                "to": "AIModels/kokoro",
+                "filter": ["**/*"]
+            },
+            {
                 "from": ".env",
                 "to": ".env"
             },
