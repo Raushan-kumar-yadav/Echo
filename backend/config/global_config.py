@@ -12,6 +12,7 @@ _DEFAULTS: dict = {
         "frame_interval":  4.0,
         "whisper_backend": "faster",   # "faster" | "openai"
         "whisper_model":   "small",    # tiny | base | small | medium | large
+        "max_concurrent_index": 2,     # how many indexing jobs run at once
     },
     "generators": {
         # image  — "google" | "comfyui" | "local" | "stability"

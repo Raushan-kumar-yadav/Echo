@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import './SettingsPanel.css';
 
 //   Types  
@@ -24,7 +24,15 @@ interface AiSettings {
   frameInterval:  number;
   whisperBackend: string;
   whisperModel: string;
+  maxConcurrentIndex: number;
   availableModels: string[];
+  indexQueue: {
+    maxConcurrent: number;
+    active: number;
+    waiting: number;
+    activeIds: string[];
+    waitingIds: string[];
+  };
 }
 
 interface GeneratorSettings {
@@ -477,6 +485,30 @@ export default function SettingsPanel({ onClose }: Props) {
                     <div className="sp-hint sp-hint--warn">
                       ⚠ Changing these settings only affects new imports. Re-delete and re-import a video to re-index it.
                     </div>
+
+                    {/* ── Concurrent Indexing ── */}
+                    <div className="sp-subsection-title">Concurrent Indexing</div>
+
+                    <div className="sp-row">
+                      <label className="sp-label" htmlFor="set-max-index">Max concurrent jobs</label>
+                      <select id="set-max-index" className="sp-select" value={ai.maxConcurrentIndex}
+                        onChange={e => applyAi({ maxConcurrentIndex: parseInt(e.target.value) } as any)}>
+                        <option value={1}>1 (safest, least RAM)</option>
+                        <option value={2}>2 (balanced) ★</option>
+                        <option value={3}>3</option>
+                        <option value={4}>4</option>
+                        <option value={5}>5 (fast, more RAM)</option>
+                      </select>
+                    </div>
+
+                    {ai.indexQueue && (
+                      <div className="sp-row">
+                        <label className="sp-label">Queue status</label>
+                        <span className="sp-badge sp-badge--info">
+                          {ai.indexQueue.active} active / {ai.indexQueue.waiting} waiting
+                        </span>
+                      </div>
+                    )}
                   </>
                 )}
               </>

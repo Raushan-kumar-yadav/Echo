@@ -3,6 +3,7 @@ from __future__ import annotations
 import multiprocessing
 import threading
 import os
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
@@ -24,6 +25,12 @@ class WorkerBus:
             max_workers=3, thread_name_prefix="EchoWaveform"
         )
         self._watchdog_thread: Optional[threading.Thread] = None
+
+        # ── Concurrent indexing limiter ──────────────────────────────────
+        self._index_lock = threading.Lock()
+        self._active_index_ids: set[str] = set()      # asset IDs currently being indexed
+        self._index_waiting: deque[dict] = deque()     # jobs waiting for a slot
+        self._max_concurrent_index: int = 2            # default; overridden by config
 
     def start(self) -> None:
         if self._process and self._process.is_alive():
@@ -62,7 +69,16 @@ class WorkerBus:
             name="EchoWorkerWatchdog",
         )
         self._watchdog_thread.start()
-        print("[WorkerBus] sandbox worker started", flush=True)
+
+        # Load concurrency limit from config
+        try:
+            from backend.config.global_config import cfg as _cfg
+            saved = _cfg.get("ai.max_concurrent_index", 2)
+            self._max_concurrent_index = max(1, min(10, int(saved)))
+        except Exception:
+            pass
+
+        print(f"[WorkerBus] sandbox worker started (max_concurrent_index={self._max_concurrent_index})", flush=True)
 
     def submit(self, job: dict) -> None:
         """Non-blocking: enqueue a job for the worker."""
@@ -135,6 +151,67 @@ class WorkerBus:
             print(f"[WorkerBus] waveform error: {asset_id[:8]}: {msg}", flush=True)
             traceback.print_exc()
 
+    # ── Concurrent indexing gate ──────────────────────────────────────
+
+    def set_max_concurrent_index(self, n: int) -> None:
+        """Update the concurrent indexing limit (called from settings API)."""
+        with self._index_lock:
+            self._max_concurrent_index = max(1, min(10, n))
+            print(f"[WorkerBus] max_concurrent_index -> {self._max_concurrent_index}", flush=True)
+        # Try to promote waiting jobs with the new limit
+        self._promote_waiting()
+
+    def get_max_concurrent_index(self) -> int:
+        return self._max_concurrent_index
+
+    def _try_submit_index(self, job: dict) -> None:
+        """Submit an indexing job if under the concurrency limit, else queue it."""
+        asset_id = job["assetId"]
+        with self._index_lock:
+            if len(self._active_index_ids) < self._max_concurrent_index:
+                self._active_index_ids.add(asset_id)
+                print(f"[WorkerBus] index START {asset_id[:8]} (active={len(self._active_index_ids)}/{self._max_concurrent_index})", flush=True)
+                self.submit(job)
+            else:
+                self._index_waiting.append(job)
+                index_cache.set_pending(asset_id)  # keep UI showing "queued"
+                print(f"[WorkerBus] index QUEUED {asset_id[:8]} (waiting={len(self._index_waiting)}, active={len(self._active_index_ids)}/{self._max_concurrent_index})", flush=True)
+
+    def _on_index_complete(self, asset_id: str) -> None:
+        """Called when an indexing job finishes (done/error/cancelled). Promotes next waiting job."""
+        with self._index_lock:
+            self._active_index_ids.discard(asset_id)
+        self._promote_waiting()
+
+    def _promote_waiting(self) -> None:
+        """Move waiting jobs into the active set if slots are available."""
+        while True:
+            with self._index_lock:
+                if not self._index_waiting:
+                    break
+                if len(self._active_index_ids) >= self._max_concurrent_index:
+                    break
+                job = self._index_waiting.popleft()
+                aid = job["assetId"]
+                # Skip if cancelled while waiting
+                if index_cache.is_cancelled(aid):
+                    print(f"[WorkerBus] skipping cancelled waiting job {aid[:8]}", flush=True)
+                    continue
+                self._active_index_ids.add(aid)
+                print(f"[WorkerBus] index PROMOTED {aid[:8]} (active={len(self._active_index_ids)}/{self._max_concurrent_index}, waiting={len(self._index_waiting)})", flush=True)
+            self.submit(job)
+
+    def get_index_queue_info(self) -> dict:
+        """Return queue status for the frontend."""
+        with self._index_lock:
+            return {
+                "maxConcurrent": self._max_concurrent_index,
+                "active": len(self._active_index_ids),
+                "waiting": len(self._index_waiting),
+                "activeIds": list(self._active_index_ids),
+                "waitingIds": [j["assetId"] for j in self._index_waiting],
+            }
+
     # VideoSemantic indexing helpers  
 
     def submit_index_video(self, asset_id: str, filepath: str, port: int = 8000,
@@ -163,8 +240,7 @@ class WorkerBus:
         vision_model   = _cfg.get("ai.vision_model",   "moondream:latest")
         frame_interval = _cfg.get("ai.frame_interval", 4.0)
 
-        print(f"[WorkerBus] index_video queued for {asset_id[:8]} model={vision_model} interval={frame_interval}s", flush=True)
-        self.submit({
+        job = {
             "type": "index_video",
             "assetId": asset_id,
             "filepath": filepath,
@@ -173,21 +249,24 @@ class WorkerBus:
             "vision_model":   vision_model,
             "frame_interval": frame_interval,
             "db_path": db_path,   # empty = use default
-        })
+        }
+        print(f"[WorkerBus] index_video queued for {asset_id[:8]} model={vision_model} interval={frame_interval}s", flush=True)
+        self._try_submit_index(job)
 
     def submit_index_image(self, asset_id: str, filepath: str, db_path: str = "") -> None:
         """Queue a single-image description + ChromaDB save job."""
         from backend.config.global_config import cfg as _cfg
         vision_model = _cfg.get("ai.vision_model", "moondream:latest")
         index_cache.set_pending(asset_id)
-        print(f"[WorkerBus] index_image queued for {asset_id[:8]} model={vision_model}", flush=True)
-        self.submit({
+        job = {
             "type": "index_image",
             "assetId": asset_id,
             "filepath": filepath,
             "vision_model": vision_model,
             "db_path": db_path,   # empty = use default
-        })
+        }
+        print(f"[WorkerBus] index_image queued for {asset_id[:8]} model={vision_model}", flush=True)
+        self._try_submit_index(job)
 
     def submit_transcribe_audio(self, asset_id: str, filepath: str, db_path: str = "") -> None:
         """Queue a Whisper-only transcript job for a pure audio file (no vision)."""
@@ -283,6 +362,7 @@ class WorkerBus:
                     notify("library")
                 except Exception:
                     pass
+                self._on_index_complete(asset_id)
 
             elif rtype == "index_video_error":
                 index_cache.set_error(asset_id, result.get("message", "unknown"))
@@ -293,6 +373,10 @@ class WorkerBus:
                                        error=result.get("message", "indexing failed"))
                 except Exception:
                     pass
+                self._on_index_complete(asset_id)
+
+            elif rtype == "index_video_cancelled":
+                self._on_index_complete(asset_id)
 
             elif rtype == "index_image_done":
                 index_cache.set_done(asset_id, 1)
@@ -313,6 +397,7 @@ class WorkerBus:
                     notify("library")
                 except Exception:
                     pass
+                self._on_index_complete(asset_id)
 
             elif rtype == "index_image_error":
                 index_cache.set_error(asset_id, result.get("message", "unknown"))
@@ -323,6 +408,7 @@ class WorkerBus:
                                        error=result.get("message", "indexing failed"))
                 except Exception:
                     pass
+                self._on_index_complete(asset_id)
 
             elif rtype == "transcribe_audio_done":
                 segs = result.get("segments", 0)

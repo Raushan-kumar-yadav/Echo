@@ -580,6 +580,7 @@ class AiSettingsPayload(BaseModel):
     frameInterval: float | None = None
     whisperBackend: str | None = None
     whisperModel: str | None = None
+    maxConcurrentIndex: int | None = None
 
 
 def _get_ai_settings() -> dict:
@@ -590,12 +591,17 @@ def _get_ai_settings() -> dict:
     except Exception:
         pass
 
+    from backend.worker.worker_bus import bus as _bus
+    queue_info = _bus.get_index_queue_info()
+
     return {
         "visionModel": _cfg.get("ai.vision_model", "moondream:latest"),
         "frameInterval": _cfg.get("ai.frame_interval", 4.0),
         "whisperBackend": _cfg.get("ai.whisper_backend", "faster"),
         "whisperModel": _cfg.get("ai.whisper_model", "small"),
+        "maxConcurrentIndex": _cfg.get("ai.max_concurrent_index", 2),
         "availableModels": available,
+        "indexQueue": queue_info,
     }
 
 
@@ -614,6 +620,14 @@ def postAiSettings(payload: AiSettingsPayload):
         _cfg.set("ai.whisper_backend", payload.whisperBackend)
         from backend.ai import whisper_tool as _wt
         _wt._model_cache.clear()
+    if payload.whisperModel is not None:
+        _cfg.set("ai.whisper_model", payload.whisperModel.strip())
+    if payload.maxConcurrentIndex is not None:
+        val = max(1, min(10, payload.maxConcurrentIndex))
+        _cfg.set("ai.max_concurrent_index", val)
+        from backend.worker.worker_bus import bus as _bus
+        _bus.set_max_concurrent_index(val)
+    return _get_ai_settings()
 # Generator Settings  
 
 class GeneratorSettingsPayload(BaseModel):
