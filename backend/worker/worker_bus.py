@@ -146,18 +146,13 @@ class WorkerBus:
         index_cache.set_pending(asset_id)
 
         import shutil
-        ffmpeg_exe = shutil.which("ffmpeg") or ""
-        if not ffmpeg_exe:
-            _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            _candidates = [
-                os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe"),
-                r"D:\ffmpeg\FFmpeg\ffmpeg.exe",
-                r"C:\ffmpeg\bin\ffmpeg.exe",
-            ]
-            for c in _candidates:
-                if os.path.isfile(c):
-                    ffmpeg_exe = c
-                    break
+         
+        _root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        _bundled = os.path.join(_root, "tools", "ffmpeg", "ffmpeg.exe")
+        if os.path.isfile(_bundled):
+            ffmpeg_exe = _bundled
+        else:
+            ffmpeg_exe = shutil.which("ffmpeg") or "ffmpeg"  
 
         from backend.config.global_config import cfg as _cfg
         vision_model   = _cfg.get("ai.vision_model",   "moondream:latest")
@@ -210,7 +205,7 @@ class WorkerBus:
             self._cancel_queue.put_nowait(asset_id)
         except Exception:
             pass
-        # Complete any SSE job card for this asset so the UI updates
+        
         try:
             from backend.routers.jobs import complete_asset_job
             complete_asset_job(asset_id, "video_index", error=None)

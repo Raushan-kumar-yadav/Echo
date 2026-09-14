@@ -16,7 +16,7 @@ def _safe_rename(src: str, dst: str, retries: int = 5, delay: float = 0.3) -> No
     """Rename src → dst with retries for Windows WinError 32 (file still held open)."""
     for attempt in range(retries):
         try:
-            os.replace(src, dst)  # os.replace is atomic and overwrites dst
+            os.replace(src, dst)   
             return
         except OSError:
             if attempt < retries - 1:
@@ -31,9 +31,7 @@ def _safe_rename(src: str, dst: str, retries: int = 5, delay: float = 0.3) -> No
 
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Encoder auto-detection
-# ──────────────────────────────────────────────────────────────────────────────
+  
 
 def detect_encoder() -> str:
     candidates = ["h264_nvenc", "h264_qsv", "libx264"]
@@ -61,10 +59,7 @@ def _cached_encoder() -> str:
     return _ENCODER_CACHE
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-# ExportJob — tracks state of one export run
-# ──────────────────────────────────────────────────────────────────────────────
-
+ 
 class ExportJob:
     def __init__(self, settings: dict) -> None:
         self.jobId    = str(uuid.uuid4())
@@ -97,24 +92,21 @@ class ExportJob:
             "path":    self.path,
         }
 
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Main export runner — called from background thread
-# ──────────────────────────────────────────────────────────────────────────────
+  
 
 def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -> None:
-    s               = job.settings
-    width           = s.get("width",           1920)
-    height          = s.get("height",          1080)
-    fps             = s.get("fps",             30.0)
-    codec           = s.get("codec",           "auto")
-    vbr             = s.get("videoBitrate",    "8M")
-    crf             = s.get("crf",             -1)
-    preset          = s.get("preset",          "medium")
-    abr             = s.get("audioBitrate",    "192k")
-    audio_sr        = s.get("audioSampleRate", 48000)
-    audio_ch        = s.get("audioChannels",   2)
-    out             = s.get("outputPath",      "output.mp4")
+    s = job.settings
+    width = s.get("width", 1920)
+    height = s.get("height", 1080)
+    fps = s.get("fps",             30.0)
+    codec = s.get("codec", "auto")
+    vbr = s.get("videoBitrate", "8M")
+    crf = s.get("crf", -1)
+    preset = s.get("preset", "medium")
+    abr = s.get("audioBitrate", "192k")
+    audio_sr = s.get("audioSampleRate", 48000)
+    audio_ch = s.get("audioChannels",   2)
+    out = s.get("outputPath", "output.mp4")
 
     if codec == "auto":
         codec = _cached_encoder()
@@ -132,7 +124,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         job.done  = True
         return
 
-    # Ensure the output directory exists — FFmpeg cannot create parent directories
+    # Ensure the output directory exists  
     out_dir = os.path.dirname(os.path.abspath(out))
     os.makedirs(out_dir, exist_ok=True)
 
@@ -151,7 +143,7 @@ def run_export(job: ExportJob, compositor: "Compositor", timeline: "Timeline") -
         "-pix_fmt", "yuv420p",
     ]
 
-    # Quality mode: CRF preferred over bitrate for CPU encoders
+    # Quality mode:  
     cpu_encoders = ("libx264", "libx265")
     if crf >= 0 and codec in cpu_encoders:
         ffmpeg_cmd += ["-crf", str(crf), "-preset", preset]
@@ -273,7 +265,7 @@ def _mux_audio_v2(
         inputs += ["-i", c["path"]]
 
     filter_parts: list[str] = []
-    mix_labels:   list[str] = []
+    mix_labels: list[str] = []
 
     for i, c in enumerate(audio_clips):
         src = f"[{i + 1}:a]"

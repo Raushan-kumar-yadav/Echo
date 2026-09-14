@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useWebCompSync } from './useWebCompSync';
 import {
   openPreviewSocket,
@@ -68,27 +68,26 @@ export default function ViewportWidget() {
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
-  // The canvas receives decoded  
+ 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioEngine | null>(null);
-
-  // Local frame ref updated on every native frame event  
+ 
   const frameNumRef = useRef<number>(0);
-  // Throttled React state update  
+ 
   const lastStateFrameRef = useRef<number>(-1);
 
-  // Native render engine 
+ 
   const [isNativeRender, setIsNativeRender] = useState(false);
   const nativeBufferRef = useRef<ArrayBuffer | null>(null);
   const nativeWidthRef  = useRef(1920);
   const nativeHeightRef = useRef(1080);
-  // Reactive canvas dimensions  
+ 
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
-  // Sync WebComp offscreen windows and push frames into C++ cache
+ 
   useWebCompSync();
 
-  // Check if native addon is available and cache the SharedArrayBuffer
+ 
   useEffect(() => {
     const api = (window as any).electronAPI;
     if (!api?.isNativeRender) return;
@@ -101,24 +100,24 @@ export default function ViewportWidget() {
       if (stats) {
         nativeWidthRef.current  = stats.width;
         nativeHeightRef.current = stats.height;
-        // Drive canvas element size reactively so putImageData fills it correctly
+ 
         setNativeDims({ w: stats.width, h: stats.height });
       }
     });
   }, []);
 
-  // Subscribe to frame-ready events  
+ 
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
     if (!api?.onFrameReady) return;
 
-    const cleanup = api.onFrameReady(async (frameNum: number) => {
+    const cleanup = api.onFrameReady((frameNum: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Get fresh pixel buffer from native compositor 
-      const buf: ArrayBuffer | null = await api.getRenderBuffer();
+      // Use the already-cached SharedArrayBuffer  
+      const buf = nativeBufferRef.current;
       if (!buf) return;
 
       const w = nativeWidthRef.current;
