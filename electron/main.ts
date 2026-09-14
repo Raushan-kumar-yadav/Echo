@@ -313,21 +313,25 @@ function startPython(): void {
 // On Windows a plain .kill() only signals the top-level process; child workers
 // created via multiprocessing.Process survive as orphans.
 function killPythonTree(): void {
+  const { execSync } = require('child_process') as typeof import('child_process')
   const pid = pyProcess?.pid
-  if (!pid) return
-  console.log(`[Cleanup] Killing Python process tree PID=${pid}`)
-  try {
-    if (process.platform === 'win32') {
-      const { execSync } = require('child_process') as typeof import('child_process')
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 })
-    } else {
-      // Unix: kill entire process group
-      process.kill(-pid, 'SIGKILL')
+
+  if (process.platform === 'win32') {
+    // 1. Kill the tracked process tree by PID (covers current session)
+    if (pid) {
+      console.log(`[Cleanup] taskkill /F /T /PID ${pid}`)
+      try { execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 }) } catch { /* already dead */ }
     }
-  } catch {
-    // Process may already be dead — fallback to direct signal
-    try { pyProcess?.kill('SIGKILL') } catch { /* ignore */ }
+    // 2. Sweep ALL backend.exe processes by name — catches any orphans from
+    //    crashed restarts or processes whose PID we lost track of.
+    try { execSync('taskkill /F /IM backend.exe /T', { stdio: 'ignore', timeout: 5000 }) } catch { /* none running */ }
+  } else {
+    // Unix: kill entire process group
+    if (pid) {
+      try { process.kill(-pid, 'SIGKILL') } catch { /* ignore */ }
+    }
   }
+
   pyProcess = null
 }
 
