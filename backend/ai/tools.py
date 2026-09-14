@@ -136,11 +136,60 @@ def get_library_assets() -> str:
 
 @tool
 def get_playback_state() -> str:
-    """Return current playback state: frame, fps, totalFrames, playing."""
+    """Return current playback state including the IN/OUT work range markers.
+
+    Returns:
+      - frame: current playhead position (frames)
+      - fps, totalFrames, playing, speed
+      - inPoint: left IN marker frame (None if not set)
+      - outPoint: right OUT marker frame (None if not set)
+
+    IMPORTANT — to inspect clips near the current work area without overflowing
+    context, use the IN/OUT points with get_timeline_range():
+
+        state = get_playback_state()        # get inPoint, outPoint
+        clips = get_timeline_range(
+            from_frame = state["inPoint"] or 0,
+            to_frame   = state["outPoint"] or state["totalFrames"]
+        )
+
+    This pattern is much safer than get_timeline_state() on large timelines.
+    """
     data = _get("/playback/state")
     return json.dumps(data, indent=2)
 
 # playback  
+
+@tool
+def get_timeline_range(from_frame: int, to_frame: int) -> str:
+    """Return a compact clip summary for clips that overlap [from_frame, to_frame].
+
+    Only clips whose timeline window intersects the given frame range are returned.
+    Each clip includes: clipId, type, startFrame, duration, endFrame, startSec, endSec,
+    trackIndex, and assetId / text / name where relevant.
+
+    RECOMMENDED USAGE — always call get_playback_state() first to get the IN/OUT
+    markers, then call this tool with those values:
+
+        # Step 1
+        state = get_playback_state()
+        in_f  = state["inPoint"]  or 0
+        out_f = state["outPoint"] or state["totalFrames"]
+
+        # Step 2 — only see clips in the work area, not the whole 10-minute timeline
+        clips = get_timeline_range(from_frame=in_f, to_frame=out_f)
+
+    Use get_timeline_state() only when you need ALL clips (e.g. to count total clips
+    or find the last clip). For any editing task scoped to a region, use this tool.
+
+    Args:
+        from_frame: Start of frame range (inclusive). Use inPoint from get_playback_state().
+        to_frame:   End of frame range (exclusive). Use outPoint from get_playback_state().
+                    Pass 0 to mean "end of timeline".
+    """
+    data = _get(f"/timeline/state/range?from_frame={from_frame}&to_frame={to_frame}")
+    return json.dumps(data, indent=2)
+
 
 @tool
 def seek_to(frame: int) -> str:
