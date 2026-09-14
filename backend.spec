@@ -11,13 +11,19 @@ block_cipher = None
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
     pathex=[str(ROOT)],
-    binaries=[],
+    binaries=[
+        # onnxruntime DLLs (needed by kokoro_onnx for ONNX model inference)
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
+    ],
     datas=[
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
         (str(ROOT / 'backend' / 'timeline' / 'effects' / 'sksl'), 'backend/timeline/effects/sksl'),
-        # kokoro_onnx needs its config.json bundled (TTS)
+        # kokoro_onnx: config.json needed for TTS package
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'kokoro_onnx'), 'kokoro_onnx'),
+        # espeakng_loader: espeak-ng-data dir + espeak-ng.dll needed for Kokoro phonemization
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'espeakng_loader'), 'espeakng_loader'),
     ],
     hiddenimports=[
         'uvicorn.lifespan.on',
