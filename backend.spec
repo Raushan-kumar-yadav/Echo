@@ -2,7 +2,7 @@
 import sys
 import os
 from pathlib import Path
-from PyInstaller.utils.hooks import copy_metadata as _cm
+from PyInstaller.utils.hooks import copy_metadata as _cm, collect_all
 
 ROOT = Path(SPECPATH)
 block_cipher = None
@@ -17,6 +17,15 @@ def safe_meta(*packages):
         except Exception as _e:
             print(f"[spec] metadata not found for '{pkg}': {_e}")
     return result
+
+
+def safe_collect(pkg):
+    """collect_all() — returns (datas, binaries, hiddenimports), empty on failure."""
+    try:
+        return collect_all(pkg)
+    except Exception as _e:
+        print(f"[spec] collect_all failed for '{pkg}': {_e}")
+        return [], [], []
 
 
 _metadata_datas = safe_meta(
@@ -38,30 +47,35 @@ _metadata_datas = safe_meta(
     'aiofiles', 'anyio', 'sniffio',
 )
 
+# collect_all() is the canonical PyInstaller way to handle packages that use
+# dynamic imports (importlib.import_module). It recursively collects:
+#   - ALL submodules as hiddenimports (catches lazy/dynamic imports)
+#   - ALL data files (SQL schemas, JSON files, etc.)
+#   - ALL binaries (.pyd/.dll extensions)
+# chromadb 1.5+ loads its entire backend via dynamic dispatch in config.py,
+# so static analysis misses most of it. collect_all solves this in one shot.
+_chroma_d, _chroma_b, _chroma_h   = safe_collect('chromadb')
+# chromadb_rust_bindings is the Rust backend extension (~62 MB .pyd).
+# It's imported via `import chromadb_rust_bindings` inside chromadb/api/rust.py.
+_rust_d,   _rust_b,   _rust_h     = safe_collect('chromadb_rust_bindings')
+
 a = Analysis(
     [str(ROOT / 'backend' / 'main.py')],
     pathex=[str(ROOT)],
     binaries=[
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
-    ],
+    ] + _chroma_b + _rust_b,
     datas=[
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
         (str(ROOT / 'backend' / 'timeline' / 'effects' / 'sksl'), 'backend/timeline/effects/sksl'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'kokoro_onnx'), 'kokoro_onnx'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'espeakng_loader'), 'espeakng_loader'),
-         
+        # jsonschema_specifications ships JSON schemas loaded at import time
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'jsonschema_specifications' / 'schemas'),
          'jsonschema_specifications/schemas'),
-        # chromadb migrations (SQL files) and embedding_function JSON schemas
-        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb' / 'migrations'),
-         'chromadb/migrations'),
-        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb' / 'utils' / 'embedding_functions' / 'schemas'),
-         'chromadb/utils/embedding_functions/schemas'),
-       
-        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb'), 'chromadb'),
-    ] + _metadata_datas,
+    ] + _metadata_datas + _chroma_d + _rust_d,
     hiddenimports=[
         'uvicorn.lifespan.on',
         'uvicorn.protocols.http.auto',
@@ -102,19 +116,15 @@ a = Analysis(
         'langgraph',
         'langgraph.graph',
         'langgraph.prebuilt',
-        'chromadb',
-        'chromadb.telemetry.product.posthog',
-        'chromadb.telemetry.product',
-        'chromadb.telemetry',
-        'av',
-        'aiofiles',
-        'dotenv',
-         
+        # VideoSemantic modules are lazy-imported inside worker functions
         'backend.ai.VideoSemantic.indexer',
         'backend.ai.VideoSemantic.descriptions',
         'backend.ai.VideoSemantic.frameExtractor',
         'backend.ai.VideoSemantic.merger',
-    ],
+        'av',
+        'aiofiles',
+        'dotenv',
+    ] + _chroma_h + _rust_h,
     hookspath=[],
     runtime_hooks=[],
     excludes=['torch','torchvision','torchaudio','tensorflow','sentence_transformers','matplotlib','tkinter','wx','PyQt5','PyQt6'],
