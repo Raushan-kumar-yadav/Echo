@@ -24,8 +24,8 @@ opencv-python-headless
 #   AI / LLM stack
 langgraph>=0.2
 langchain-core>=0.3
-langchain-anthropic>=0.3      # ECHO_AI_PROVIDER=claude
-langchain-openai>=0.2         # ECHO_AI_PROVIDER=openai  <- ACTIVE
+langchain-anthropic>=0.3       
+langchain-openai>=0.2         
 anthropic
 openai
 ollama
@@ -37,3 +37,8 @@ torchvision
 sentence-transformers>=2.0
 scikit-learn>=1.3
 chromadb
+
+langchain-ollama>=1.1.0
+langchain-google-genai>=4.4.0
+langchain-groq>=1.1.3
+ddgs>=9.0.0

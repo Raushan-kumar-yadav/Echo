@@ -68,27 +68,27 @@ export default function ViewportWidget() {
   const [outPoint, setOutPoint] = useState<number | null>(null);
   const loopActive = inPoint !== null && outPoint !== null;
 
-  // The canvas receives decoded  
+ 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<AudioEngine | null>(null);
 
-  // Local frame ref updated on every native frame event  
+   
   const frameNumRef = useRef<number>(0);
-  // Throttled React state update  
+ 
   const lastStateFrameRef = useRef<number>(-1);
 
-  // Native render engine 
+ 
   const [isNativeRender, setIsNativeRender] = useState(false);
   const nativeBufferRef = useRef<ArrayBuffer | null>(null);
   const nativeWidthRef  = useRef(1920);
   const nativeHeightRef = useRef(1080);
-  // Reactive canvas dimensions  
+   
   const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
 
-  // Sync WebComp offscreen windows and push frames into C++ cache
+   
   useWebCompSync();
 
-  // Check if native addon is available and cache the SharedArrayBuffer
+   
   useEffect(() => {
     const api = (window as any).electronAPI;
     if (!api?.isNativeRender) return;
@@ -101,13 +101,13 @@ export default function ViewportWidget() {
       if (stats) {
         nativeWidthRef.current  = stats.width;
         nativeHeightRef.current = stats.height;
-        // Drive canvas element size reactively so putImageData fills it correctly
+         
         setNativeDims({ w: stats.width, h: stats.height });
       }
     });
   }, []);
 
-  // Subscribe to frame-ready events  
+   
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
@@ -117,11 +117,11 @@ export default function ViewportWidget() {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Get fresh pixel buffer from native compositor 
+       
       const buf: ArrayBuffer | null = await api.getRenderBuffer();
       if (!buf) return;
 
-      // Get current compositor dimensions (may change with preview scale)
+       
       const stats = await api.getRenderStats();
       const w = stats?.width  ?? nativeWidthRef.current;
       const h = stats?.height ?? nativeHeightRef.current;
@@ -173,7 +173,7 @@ export default function ViewportWidget() {
       } catch { /* backend not ready */ }
     }
 
-    // Poll for valid port (only reload clips, not during active playback to avoid glitches)
+     
     const portPollId = setInterval(() => {
       const p: number = (window as any).__ECHO_PORT__ ?? 0
       if (p && p !== currentPort) {
@@ -190,8 +190,7 @@ export default function ViewportWidget() {
     window.addEventListener('echo:tracks-changed', onTracksChanged)
     window.addEventListener('echo:render-now', onTracksChanged)
 
-    // ── Audio seek / pause from Timeline playhead & ruler ──────────────────
-    // Fired by Playhead.tsx (drag) and Timeline.tsx (ruler click)
+    
     const onAudioSeek = (e: Event) => {
       const frame = (e as CustomEvent<number>).detail
       engine.seek(frame)
@@ -246,7 +245,7 @@ export default function ViewportWidget() {
     return () => { if (id) clearInterval(id); };
   }, []);
 
-  // Re-render current frame when inspector changes a param
+ 
   useEffect(() => {
     const api = (window as any).electronAPI;
     const handler = () => {
@@ -262,8 +261,7 @@ export default function ViewportWidget() {
 
   const togglePlay = useCallback(async () => {
     const api = (window as any).electronAPI;
-    // Use frameNumRef.current (updated every native frame) — never stale,
-    // unlike currentFrame React state which can lag by one render cycle.
+ 
     const liveFrame = frameNumRef.current ?? currentFrame;
     if (isPlaying) {
       await playbackPause();
