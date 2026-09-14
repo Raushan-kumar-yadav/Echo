@@ -112,7 +112,8 @@ a = Analysis(
          
         'backend.ai.VideoSemantic.indexer',
         'backend.ai.VideoSemantic.descriptions',
-        'backend.ai.VideoSemantic.searcher',
+        'backend.ai.VideoSemantic.frameExtractor',
+        'backend.ai.VideoSemantic.merger',
     ],
     hookspath=[],
     runtime_hooks=[],
