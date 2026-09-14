@@ -181,6 +181,38 @@ def saveProject(req: SaveRequest):
     }
     proj_dict["assets"] = media_assets
 
+    # ── Safety guard: don't overwrite a real project with empty in-memory state ──
+    # This prevents the crash-restart-save race where the backend restarts with
+    # no project loaded (0 clips, 0 media) and then Ctrl+S overwrites good data.
+    clip_count_now = 0
+    if tl:
+        for track in tl.tracks:
+            clip_count_now += len(track.clips)
+    if clip_count_now == 0 and len(media_assets) == 0 and anchor_path.exists():
+        try:
+            import json as _json_check
+            existing = _json_check.loads(anchor_path.read_text(encoding="utf-8"))
+            existing_clips = sum(len(t.get("clips", [])) for t in existing.get("timeline", {}).get("tracks", []))
+            existing_media = len(existing.get("assets", {}))
+            if existing_clips > 0 or existing_media > 0:
+                print(
+                    f"[Project] ⚠ Save blocked — backend has empty state "
+                    f"but disk has {existing_clips} clips / {existing_media} assets. "
+                    f"Reload the project first.",
+                    flush=True,
+                )
+                raise HTTPException(
+                    409,
+                    f"Save blocked: backend state is empty (0 clips, 0 assets) "
+                    f"but '{anchor_path.name}' on disk has {existing_clips} clips "
+                    f"and {existing_media} assets. Reload the project first to avoid data loss."
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Can't read disk — allow save
+
+
     
     audio_dest = proj_folder / "assets" / "audio"
     _AUDIO_EXTS = {".wav", ".mp3", ".aac", ".flac", ".ogg", ".m4a"}
