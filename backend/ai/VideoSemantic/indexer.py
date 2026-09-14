@@ -195,22 +195,42 @@ def _try_heal_collection(col_name: str) -> None:
         new_col = _client.get_or_create_collection(
             name=col_name, metadata={"hnsw:space": "cosine"}
         )
+        # Update the global reference FIRST so the new (valid) collection is
+        # reachable even if the upsert below throws — prevents "does not exist"
+        # errors from lingering references to the deleted UUID.
+        if col_name == "video_segments":
+            _col = new_col
+        else:
+            _img_col = new_col
+
         embs = all_data["embeddings"]
-        if embs:
+        # Rust backend returns numpy arrays — `if embs:` raises ValueError for
+        # multi-element arrays. Use explicit None/len check instead.
+        has_embs = embs is not None and hasattr(embs, "__len__") and len(embs) > 0
+        if has_embs:
             new_col.upsert(ids=all_data["ids"], embeddings=embs,
                            documents=all_data["documents"], metadatas=all_data["metadatas"])
         else:
             new_col.upsert(ids=all_data["ids"],
                            documents=all_data["documents"], metadatas=all_data["metadatas"])
-        if col_name == "video_segments":
-            _col = new_col
-        else:
-            _img_col = new_col
         print(f"[ChromaDB] ✓ Healed HNSW for '{col_name}' ({len(all_data['ids'])} entries)", flush=True)
     except Exception as _e:
         _msg = str(_e).lower()
         if "nothing found on disk" not in _msg and "hnsw" not in _msg:
             print(f"[ChromaDB] Heal note for '{col_name}' (non-fatal): {_e}", flush=True)
+        # If heal failed mid-way (collection was deleted but not recreated),
+        # ensure _col/_img_col always point to a valid collection.
+        try:
+            recovery = _client.get_or_create_collection(
+                name=col_name, metadata={"hnsw:space": "cosine"}
+            )
+            if col_name == "video_segments":
+                _col = recovery
+            else:
+                _img_col = recovery
+        except Exception:
+            pass  # Total failure — already logged above
+
 
 
 def _col_count(col) -> int:
