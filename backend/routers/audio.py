@@ -112,6 +112,17 @@ def audioStream(assetId: str):
                         headers={"Accept-Ranges": "bytes", "Cache-Control": "public, max-age=3600"})
 
 
+@router.get("/assets/{assetId}/audio-stream/{clipId}")
+def audioStreamForClip(assetId: str, clipId: str):
+    """Clip-scoped alias for audioStream.
+    
+    Having a unique URL per clip (rather than per asset) prevents the browser
+    audio engine from treating two clips that share the same source file as
+    the same buffer node — which caused audio to play from the wrong clip.
+    """
+    return audioStream(assetId)
+
+
 @router.get("/timeline/audio-clips")
 def listAudioClips():
     # Always scan rootTimeline  
@@ -149,7 +160,9 @@ def listAudioClips():
                     "duration": clip.duration,
                     "mediaOffset": getattr(clip, "mediaOffset", 0),
                     "volume": getattr(clip, "volume", 1.0),
-                    "streamUrl":   f"/assets/{asset_id}/audio-stream",
+                    # Use clip-scoped URL so audio engine never confuses two clips
+                    # that share the same underlying asset.
+                    "streamUrl":   f"/assets/{asset_id}/audio-stream/{clip.clipId}",
                 })
 
     _collect_audio(tl)

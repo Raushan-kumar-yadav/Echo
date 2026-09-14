@@ -718,21 +718,45 @@ def build_agent(port: int = 8000):
             system_content = _SYSTEM
         messages = [SystemMessage(content=system_content)] + state["messages"]
         # Retry on transient proxy/network disconnects (e.g. Tabi dropping the
-        # streaming connection mid-response with RemoteProtocolError).
-        _MAX_RETRIES = 3
+        # streaming connection mid-response with RemoteProtocolError) AND on
+        # upstream HTTP 5xx errors from the LLM provider (e.g. TokenRouter 500).
+        _MAX_RETRIES = 4
         for _attempt in range(_MAX_RETRIES):
             try:
                 response = llm_with_tools.invoke(messages)
                 return {"messages": [response]}
             except Exception as _exc:
-                _exc_str = str(type(_exc).__name__)
-                _is_network = any(k in _exc_str for k in ("RemoteProtocol", "ReadTimeout", "ConnectError", "Connection"))
+                _exc_type = type(_exc).__name__
+                _exc_msg  = str(_exc).lower()
+                # Network-level transients
+                _is_network = any(k in _exc_type for k in (
+                    "RemoteProtocol", "ReadTimeout", "ConnectError", "Connection",
+                    "Timeout", "NetworkError",
+                ))
                 if not _is_network:
-                    # Re-check by message text as well (httpx2 wraps the class)
-                    _is_network = "peer closed connection" in str(_exc).lower() or "incomplete chunked" in str(_exc).lower()
-                if _is_network and _attempt < _MAX_RETRIES - 1:
-                    _wait = 2 ** _attempt  # 1s, 2s, 4s
-                    print(f"[AI Agent] Network error ({_exc_str}), retrying in {_wait}s (attempt {_attempt + 1}/{_MAX_RETRIES})...", flush=True)
+                    _is_network = any(k in _exc_msg for k in (
+                        "peer closed connection", "incomplete chunked",
+                        "connection reset", "connection refused",
+                    ))
+                # Upstream HTTP 5xx from LLM provider (TokenRouter, OpenAI, etc.)
+                _is_upstream_5xx = any(k in _exc_type for k in (
+                    "InternalServerError", "APIStatusError", "OpenAIAPIError",
+                    "ServiceUnavailable", "RateLimitError",
+                ))
+                if not _is_upstream_5xx:
+                    _is_upstream_5xx = any(k in _exc_msg for k in (
+                        "error code: 500", "error code: 502", "error code: 503",
+                        "upstream error", "do_request_failed",
+                        "rate_limit", "overloaded",
+                    ))
+                _should_retry = (_is_network or _is_upstream_5xx) and _attempt < _MAX_RETRIES - 1
+                if _should_retry:
+                    _wait = min(2 ** _attempt, 16)  # 1s, 2s, 4s, 8s max
+                    print(
+                        f"[AI Agent] Transient error ({_exc_type}), "
+                        f"retrying in {_wait}s (attempt {_attempt + 1}/{_MAX_RETRIES})...",
+                        flush=True,
+                    )
                     time.sleep(_wait)
                     continue
                 raise

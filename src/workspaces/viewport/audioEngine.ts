@@ -209,10 +209,11 @@ export class AudioEngine {
     src.playbackRate.value = this._rate
     src.connect(node.gainNode)
 
-    // clamp duration to what remains in the clip from the current offset
-    const clipDurSec = (clip.duration - Math.max(0, clipRelFrame)) / (this.fps * this._rate)
+    // duration param to start() is in BUFFER-TIME (audio seconds), not real time.
+    // Do NOT divide by _rate here — playbackRate already handles real-time speed.
+    const clipDurSec  = (clip.duration - Math.max(0, clipRelFrame)) / this.fps
     const bufRemainSec = node.buffer.duration - offsetSec
-    const playDurSec = Math.max(0, Math.min(clipDurSec, bufRemainSec))
+    const playDurSec  = Math.max(0, Math.min(clipDurSec, bufRemainSec))
     if (playDurSec <= 0) return
 
     src.start(ctx.currentTime + delayCtxTime, offsetSec, playDurSec)
