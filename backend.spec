@@ -67,6 +67,8 @@ _ow_d,     _ow_b,     _ow_h       = safe_collect('whisper')
 # sentence_transformers: Tier-1 semantic embedder for ChromaDB indexing
 _st_d,     _st_b,     _st_h       = safe_collect('sentence_transformers')
 _tok_d,    _tok_b,    _tok_h      = safe_collect('tokenizers')
+# optimum: required for sentence_transformers backend="onnx" (torch-free inference)
+_opt_d,    _opt_b,    _opt_h      = safe_collect('optimum')
 # nvidia CUDA packages: provide cublas64_12.dll, cudnn64_9.dll, etc.
 # Required by ctranslate2 for GPU-accelerated Whisper transcription.
 _nvcublas_d, _nvcublas_b, _nvcublas_h = safe_collect('nvidia.cublas')
@@ -79,7 +81,7 @@ a = Analysis(
     binaries=[
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime.dll'), '.'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'onnxruntime' / 'capi' / 'onnxruntime_providers_shared.dll'), '.'),
-    ] + _chroma_b + _rust_b + _fw_b + _ct2_b + _ow_b + _nvcublas_b + _nvcudnn_b + _nvnvrtc_b + _st_b + _tok_b,
+    ] + _chroma_b + _rust_b + _fw_b + _ct2_b + _ow_b + _nvcublas_b + _nvcudnn_b + _nvnvrtc_b + _st_b + _tok_b + _opt_b,
     datas=[
         (str(ROOT / 'backend'),   'backend'),
         (str(ROOT / 'templates'), 'templates'),
@@ -89,7 +91,7 @@ a = Analysis(
         # jsonschema_specifications ships JSON schemas loaded at import time
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'jsonschema_specifications' / 'schemas'),
          'jsonschema_specifications/schemas'),
-    ] + _metadata_datas + _chroma_d + _rust_d + _fw_d + _ct2_d + _ow_d + _st_d + _tok_d + _nvcublas_d + _nvcudnn_d + _nvnvrtc_d,
+    ] + _metadata_datas + _chroma_d + _rust_d + _fw_d + _ct2_d + _ow_d + _st_d + _tok_d + _opt_d + _nvcublas_d + _nvcudnn_d + _nvnvrtc_d,
     hiddenimports=[
         'uvicorn.lifespan.on',
         'uvicorn.protocols.http.auto',
@@ -138,7 +140,7 @@ a = Analysis(
         'av',
         'aiofiles',
         'dotenv',
-    ] + _chroma_h + _rust_h + _fw_h + _ct2_h + _ow_h + _st_h + _tok_h + _nvcublas_h + _nvcudnn_h + _nvnvrtc_h,
+    ] + _chroma_h + _rust_h + _fw_h + _ct2_h + _ow_h + _st_h + _tok_h + _opt_h + _nvcublas_h + _nvcudnn_h + _nvnvrtc_h,
     hookspath=[],
     runtime_hooks=[],
     excludes=['torch','torchvision','torchaudio','tensorflow','matplotlib','tkinter','wx','PyQt5','PyQt6'],

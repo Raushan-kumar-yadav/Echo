@@ -15,8 +15,11 @@ from pathlib import Path
 
 try:
     from sentence_transformers import SentenceTransformer as _ST
-    _embedder = _ST("all-MiniLM-L6-v2")
-    print("[indexer] Using sentence_transformers embedder (Tier 1)", flush=True)
+    # Use ONNX backend so PyTorch is NOT required.
+    # torch is excluded from the PyInstaller build (~2 GB) but onnxruntime
+    # IS bundled, and sentence-transformers >= 3.0 supports backend="onnx".
+    _embedder = _ST("all-MiniLM-L6-v2", backend="onnx")
+    print("[indexer] Using sentence_transformers embedder (Tier 1, ONNX backend)", flush=True)
 except Exception as _e:
     print(f"[indexer] sentence_transformers unavailable ({_e}) — using hash-bag-of-words fallback", flush=True)
     _embedder = None
