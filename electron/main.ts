@@ -301,6 +301,50 @@ function startPython(): void {
   console.log('[PY] started — pid:', pyProcess.pid, '| python:', pythonExe)
 }
 
+// ── Graceful shutdown ──────────────────────────────────────────────────────────
+// Kills the FULL process tree (backend.exe + all multiprocessing worker children).
+// On Windows a plain .kill() only signals the top-level process; child workers
+// created via multiprocessing.Process survive as orphans.
+function killPythonTree(): void {
+  const pid = pyProcess?.pid
+  if (!pid) return
+  console.log(`[Cleanup] Killing Python process tree PID=${pid}`)
+  try {
+    if (process.platform === 'win32') {
+      const { execSync } = require('child_process') as typeof import('child_process')
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: 'ignore', timeout: 5000 })
+    } else {
+      // Unix: kill entire process group
+      process.kill(-pid, 'SIGKILL')
+    }
+  } catch {
+    // Process may already be dead — fallback to direct signal
+    try { pyProcess?.kill('SIGKILL') } catch { /* ignore */ }
+  }
+  pyProcess = null
+}
+
+function doCleanup(): void {
+  if (appQuitting) return   // idempotent — only run once
+  appQuitting  = true
+  pyKilledByUs = true
+  console.log('[Cleanup] Starting graceful shutdown…')
+
+  // Pause render engine first so no more callbacks fire
+  try { renderEngine?.pause() } catch { /* ignore */ }
+
+  // Destroy all WebComp renderer windows
+  try { destroyAll() } catch { /* ignore */ }
+
+  // Close auxiliary windows so window-all-closed fires reliably
+  try { if (devLogWindow  && !devLogWindow.isDestroyed())  { devLogWindow.close();  devLogWindow  = null } } catch { /* ignore */ }
+  try { if (splashWindow  && !splashWindow.isDestroyed())  { splashWindow.close();  splashWindow  = null } } catch { /* ignore */ }
+
+  // Kill the full Python process tree
+  killPythonTree()
+  console.log('[Cleanup] Done')
+}
+
 //   Splash window  
 function createSplash(): void {
   splashWindow = new BrowserWindow({
@@ -351,7 +395,7 @@ function createWindow(): void {
   }
 
   mainWindow.on('close', () => {
-    try { renderEngine?.pause() } catch (_) {}
+    doCleanup()
   })
 
   mainWindow.webContents.on('did-finish-load', () => {
@@ -1017,15 +1061,10 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  appQuitting  = true
-  pyKilledByUs = true
-  pyProcess?.kill()
+  doCleanup()
   app.quit()
 })
 
 app.on('before-quit', () => {
-  appQuitting  = true
-  pyKilledByUs = true
-  destroyAll()   
-  pyProcess?.kill()
+  doCleanup()
 })
