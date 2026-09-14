@@ -1,0 +1,66 @@
+import React, { memo, useCallback, useRef } from 'react';
+import { useTimeline, frameToTimecode } from './TimelineContext';
+import { HEADER_WIDTH, RULER_HEIGHT } from './types';
+import { playbackSeek } from '../../api/useApi';
+
+interface Props {
+   scrollLeft: number;
+  contentLeft: number;   
+}
+
+ 
+const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
+  const { state, dispatch } = useTimeline();
+  const { currentFrame, zoomX, fps, totalFrames } = state;
+  const lastSeekFrame = useRef<number>(-1);
+
+   const physicalX = currentFrame * zoomX - scrollLeft; 
+
+  // Hide if outside  
+  const isVisible = physicalX >= 0 && physicalX <= window.innerWidth;
+
+  //   Drag handler  
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startFrame = currentFrame;
+
+    const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const newFrame = Math.max(0, Math.min(totalFrames, Math.round(startFrame + dx / zoomX)));
+      if (newFrame !== lastSeekFrame.current) {
+        lastSeekFrame.current = newFrame;
+        dispatch({ type: 'SEEK', frame: newFrame });
+        playbackSeek(newFrame).catch(() => {});
+        // Also tell C++ compositor
+        const api = (window as any).electronAPI;
+        api?.renderSeek(newFrame);
+      }
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [currentFrame, zoomX, totalFrames, dispatch]); 
+
+  if (!isVisible) return null;
+
+  return (
+    <div
+      className="tl-playhead"
+      style={{ left: HEADER_WIDTH + physicalX }}
+      aria-label={`Playhead at ${frameToTimecode(currentFrame, fps)}`}
+    >
+      {/* Triangle head */}
+      <div className="tl-playhead__head" onMouseDown={onMouseDown} />
+      {/* Vertical line */}
+      <div className="tl-playhead__line" />
+    </div>
+  );
+});
+
+export default Playhead;

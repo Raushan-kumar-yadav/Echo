@@ -1,4 +1,4 @@
-// Neon Headline — Fade WebComp Template
+﻿// Neon Headline — Echo WebComp Template
 // Orbitron font with electric neon glow flicker reveal
 
 let p = Object.assign({
@@ -7,7 +7,7 @@ let p = Object.assign({
   tagline:   'Beyond the visible',
   neonColor: '#00ffe7',
   bgColor:   '#05050f',
-}, window.FADE_PARAMS || {});
+}, window.ECHO_PARAMS || {});
 
 const scene     = document.getElementById('scene');
 const scanlines = document.getElementById('scanlines');
@@ -62,7 +62,7 @@ function flicker(f) {
   return flickerTable[f % flickerTable.length];
 }
 
-window.addEventListener('fade:frame', (e) => {
+window.addEventListener('echo:frame', (e) => {
   const f = e.detail.frame ?? e.detail ?? 0;
   const DUR = 180;
 
@@ -111,7 +111,7 @@ window.addEventListener('fade:frame', (e) => {
   tagline.style.transform = `translateY(${lerp(16,0,tp)}px)`;
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('echo:params', (e) => {
   Object.assign(p, e.detail);
   applyParams();
 });

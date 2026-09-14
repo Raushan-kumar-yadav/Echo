@@ -1,8 +1,8 @@
-﻿# Echo — AI-Powered Video Editor 🎬✨
+# Fade — AI-Powered Video Editor 🎬✨
 
-Echo is a next-generation, AI-first video editing platform that fuses traditional non-linear editing (NLE) with an intelligent "AI Director". Built on a highly optimized stack of Electron, React, Python, and C++/Vulkan, Echo automates complex editing tasks, understands video semantics via vision models, and generates dynamic motion graphics on the fly.
+Fade is a next-generation, AI-first video editing platform that fuses traditional non-linear editing (NLE) with an intelligent "AI Director". Built on a highly optimized stack of Electron, React, Python, and C++/Vulkan, Fade automates complex editing tasks, understands video semantics via vision models, and generates dynamic motion graphics on the fly.
 
-![Echo Interface](https://img.shields.io/badge/UI-Glassmorphism-6c63ff?style=for-the-badge)
+![Fade Interface](https://img.shields.io/badge/UI-Glassmorphism-6c63ff?style=for-the-badge)
 ![Electron](https://img.shields.io/badge/Electron-191970?style=for-the-badge&logo=Electron&logoColor=white)
 ![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
@@ -15,13 +15,13 @@ Echo is a next-generation, AI-first video editing platform that fuses traditiona
 ## 🌟 Major Features
 
 ### 🤖 AI Director (LangGraph + LangChain)
-The core of Echo is the AI Director, an intelligent agent running on a stateful graph (LangGraph). Instead of basic chat, the agent:
+The core of Fade is the AI Director, an intelligent agent running on a stateful graph (LangGraph). Instead of basic chat, the agent:
 - Acts autonomously with access to dozens of timeline-manipulating tools (`split_clip`, `add_text_clip`, `apply_curve_preset`).
 - Reads live timeline state before making decisions, ensuring precise edits.
 - Supports both local privacy-first models (Ollama: `llama3.2`, `gemma3`) and cloud LLMs (Claude, OpenAI, Gemini).
 
 ### 🧠 Semantic Video Understanding
-Echo doesn't just edit video; it *understands* it using a multi-modal AI pipeline:
+Fade doesn't just edit video; it *understands* it using a multi-modal AI pipeline:
 - **Vision Indexing:** Extracts frames and runs local quantized vision models (Ollama/Moondream) to describe scenes in natural language.
 - **Whisper Speech-to-Text:** Generates highly accurate, timestamped transcripts from audio tracks.
 - **ChromaDB Vector Search:** Embeds descriptions and transcripts into a local vector database. The AI can instantly retrieve clips matching concepts like *"a red car on a highway"* or *"when the speaker talks about AI"*.
@@ -49,7 +49,7 @@ Echo doesn't just edit video; it *understands* it using a multi-modal AI pipelin
 
 ## 🏗️ System Architecture
 
-Echo uses a highly decoupled, multi-process architecture to guarantee UI responsiveness even during heavy AI inference:
+Fade uses a highly decoupled, multi-process architecture to guarantee UI responsiveness even during heavy AI inference:
 
 1. **Frontend / Desktop Shell (Electron + React):** Handles local filesystem access and renders the UI.
 2. **Backend / Orchestrator (Python + FastAPI):** Manages the AI agent, tools, timeline state, and streaming responses via `async` endpoints.
@@ -69,8 +69,8 @@ Echo uses a highly decoupled, multi-process architecture to guarantee UI respons
 
 ### 1. Clone the repository
 ```bash
-git clone https://github.com/Raushan-kumar-yadav/Echo.git
-cd Echo
+git clone https://github.com/Raushan-kumar-yadav/Fade.git
+cd Fade
 ```
 
 ### 2. Install Node Dependencies
@@ -105,7 +105,7 @@ npm run dev
 ## 🗺️ Project Structure
 
 ```text
-Echo/
+Fade/
 ├── backend/               # Python FastAPI, AI Agent (LangGraph), ChromaDB, PyAV
 ├── renderer/              # C++ Vulkan/Skia Headless Compositor (N-API bindings)
 ├── electron/              # Electron Main process & Preload scripts

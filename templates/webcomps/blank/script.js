@@ -1,11 +1,11 @@
- 
+﻿ 
 
-window.addEventListener('fade:frame', (e) => {
+window.addEventListener('echo:frame', (e) => {
   const { frame, time } = e.detail;
   // Animate here based on frame/time
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('echo:params', (e) => {
   const params = e.detail;
   // React to param changes here
 });

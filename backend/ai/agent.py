@@ -69,13 +69,12 @@ def _detect_ollama_model() -> str:
 
 
 def _build_llm():
-    provider = os.environ.get("ECHO_AI_PROVIDER", "tokenrouter").lower()
-    model_name = os.environ.get("ECHO_AI_MODEL", "")
+    provider = os.environ.get("ECHO_AI_PROVIDER", os.environ.get("FADE_AI_PROVIDER", "ollama")).lower()
+    model_name = os.environ.get("ECHO_AI_MODEL", os.environ.get("FADE_AI_MODEL", ""))
 
     if provider == "ollama":
         from langchain_ollama import ChatOllama
 
-        # Auto-detect which model is installed if not specified
         if not model_name:
             model_name = _detect_ollama_model()
 
@@ -83,14 +82,30 @@ def _build_llm():
         return ChatOllama(model=model_name, temperature=0)
 
     elif provider == "tokenrouter":
-        # api.tokenrouter.com — OpenAI-compatible endpoint
+         
         from langchain_openai import ChatOpenAI
-        key      = os.environ.get("TOKENROUTER_API_KEY", "").strip().strip('"')
+        key = os.environ.get("TOKENROUTER_API_KEY", "").strip().strip('"')
         base_url = os.environ.get("TOKENROUTER_BASE_URL", "https://api.tokenrouter.com/v1").strip().strip('"')
         if not key:
             print("[AI Agent] WARNING: TOKENROUTER_API_KEY not set in .env", flush=True)
         m = model_name or "z-ai/glm-5.3-free"
         print(f"[AI Agent] Using TokenRouter model: {m} via {base_url}", flush=True)
+        return ChatOpenAI(
+            model=m,
+            temperature=0,
+            api_key=key,
+            base_url=base_url,
+        )
+
+    elif provider == "tabi":
+        # tabitoken.com 
+        from langchain_openai import ChatOpenAI
+        key = os.environ.get("TABI_API_KEY", "").strip().strip('"')
+        base_url = os.environ.get("TABI_BASE_URL", "https://tabitoken.com/v1").strip().strip('"')
+        if not key:
+            print("[AI Agent] WARNING: TABI_API_KEY not set in .env", flush=True)
+        m = model_name or "claude-opus-5-thinking"
+        print(f"[AI Agent] Using Tabi model: {m} via {base_url}", flush=True)
         return ChatOpenAI(
             model=m,
             temperature=0,
@@ -144,7 +159,7 @@ def _build_llm():
         return ChatAnthropic(**kwargs)
 
     else:
-        raise ValueError(f"Unknown ECHO_AI_PROVIDER: {provider}")
+        raise ValueError(f"Unknown FADE_AI_PROVIDER: {provider}")
 
 
 #   User profile helper  
@@ -305,7 +320,7 @@ ANIMATION EXAMPLES:
   animate_property(id, "pos_x", frame=25, value=0)
   apply_curve_preset(id, "pos_x", "snap")
 
-  # Echo in opacity:
+  # Fade in opacity:
   animate_property(id, "opacity", frame=0,  value=0.0)
   animate_property(id, "opacity", frame=20, value=1.0)
   apply_curve_preset(id, "opacity", "fade_in")
@@ -426,7 +441,7 @@ ASSET PLACEMENT PATTERN (preferred):
 
 WEBCOMP — HTML/CSS/JS ANIMATED SCENES:
 WebComps are HTML pages rendered frame-by-frame by an Electron offscreen BrowserWindow.
-Each frame, Electron injects: window.FADE_FRAME, FADE_TIME, FADE_FPS, FADE_WIDTH, FADE_HEIGHT, FADE_PARAMS.
+Each frame, Electron injects: window.ECHO_FRAME, ECHO_TIME, ECHO_FPS, ECHO_WIDTH, ECHO_HEIGHT, ECHO_PARAMS.
 
 WEBCOMP TOOL CONTRACT (3 params):
   js â†’ pure JavaScript animation logic (no <script> tags)
@@ -440,14 +455,14 @@ WebComp tools:
 - add_webcomp_to_timeline(id, track, start, dur) â†’ place on timeline
 - edit_webcomp_file(id, filename, code) â†’ overwrite script.js / style.css
 - reload_webcomp(id) â†’ reload after edits
-- set_webcomp_params(clip_id, params) â†’ drive window.FADE_PARAMS
+- set_webcomp_params(clip_id, params) â†’ drive window.ECHO_PARAMS
 - set_webcomp_transform(clip_id, x, y, scaleX, scaleY, rotation)
 
 WEBCOMP RULES:
 1. Always call list_webcomp_templates() first.
 2. Never write index.html â€” auto-generated. Never use CDN URLs.
 3. In js: listen to window.addEventListener('echo:frame', ...) to animate.
-4. FadeReact available: const { useCurrentFrame, interpolate, spring, mount } = window.FadeReact;
+4. EchoReact available: const { useCurrentFrame, interpolate, spring, mount } = window.EchoReact;
 5. After edit_webcomp_file(), always call reload_webcomp().
 6. Before editing an existing webcomp, call describe_clip(clip_id) to read the current
    HTML/CSS/JS source â€” so you can make targeted changes instead of rewriting from scratch.

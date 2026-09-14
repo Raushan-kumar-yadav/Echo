@@ -1576,12 +1576,12 @@ def create_webcomp(
       script.js   ← written from your `js` argument
 
     GLOBALS INJECTED EACH FRAME by Electron:
-      window.FADE_FRAME   — current frame number (int, 0-indexed)
-      window.FADE_TIME    — current time in seconds (float)
-      window.FADE_FPS     — project FPS
-      window.FADE_WIDTH   — canvas width  (1920)
-      window.FADE_HEIGHT  — canvas height (1080)
-      window.FADE_PARAMS  — runtime params from the inspector panel (object)
+      window.ECHO_FRAME   — current frame number (int, 0-indexed)
+      window.ECHO_TIME    — current time in seconds (float)
+      window.ECHO_FPS     — project FPS
+      window.ECHO_WIDTH   — canvas width  (1920)
+      window.ECHO_HEIGHT  — canvas height (1080)
+      window.ECHO_PARAMS  — runtime params from the inspector panel (object)
 
     LISTEN FOR FRAME EVENTS in script.js:
       window.addEventListener('echo:frame', (e) => {
@@ -1589,8 +1589,8 @@ def create_webcomp(
         // your animation code here
       });
 
-    FADE REACT (Remotion-style) — available with NO import needed:
-      const { useCurrentFrame, interpolate, spring, mount, FadeComposition } = window.FadeReact;
+    ECHO REACT (Remotion-style) — available with NO import needed:
+      const { useCurrentFrame, interpolate, spring, mount, EchoComposition } = window.EchoReact;
 
     Args:
         name: Human-readable name for the WebComp
@@ -1711,10 +1711,10 @@ def edit_webcomp_file(webcomp_id: str, filename: str, content: str) -> str:
 
 @tool
 def set_webcomp_params(clip_id: str, params: dict) -> str:
-    """Set runtime params on a WebComp clip (drives window.FADE_PARAMS in the page).
+    """Set runtime params on a WebComp clip (drives window.ECHO_PARAMS in the page).
 
     Params appear in the inspector panel and are injected into the WebComp page
-    as window.FADE_PARAMS. Match keys to the param schema in webcomp.json.
+    as window.ECHO_PARAMS. Match keys to the param schema in webcomp.json.
 
     Example: set_webcomp_params("clip-123", {"text": "Hello", "color": "#ff0000"})
 
@@ -2868,7 +2868,7 @@ def export_video(
     if not output_path:
         from backend.state import engine
         import os
-        base_name = f"fade_export.{ext}"
+        base_name = f"echo_export.{ext}"
         if engine.project and engine.project.filePath:
             proj_dir = os.path.dirname(engine.project.filePath)
             output_path = os.path.join(proj_dir, base_name)

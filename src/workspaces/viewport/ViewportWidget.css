@@ -1,0 +1,424 @@
+ 
+/* Tokens */
+:root {
+  --vw-bg: #111111;
+  --vw-header: #1e1e1e;
+  --vw-canvas: #0a0a0a;
+  --vw-bar: #1a1a1a;
+  --vw-border: #111111;
+  --vw-btn: #2a2a2a;
+  --vw-btn-h: #3a3a3a;
+  --vw-text-1: #cccccc;
+  --vw-text-2: #888888;
+  --vw-accent: #00ffcc;
+  --vw-play: #4a90e2;
+}
+
+/*   Root   */
+.vw-root {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--vw-bg);
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  font-size: 12px;
+  color: var(--vw-text-1);
+  user-select: none;
+}
+
+.vw-root--fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: #000;
+}
+
+
+/*  Canvas   */
+.vw-canvas {
+  flex: 1;
+  position: relative;
+  background: var(--vw-canvas);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Aspect-ratio frame  */
+.vw-canvas::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid #1e1e1e;
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* Stage */
+.vw-stage {
+  position: relative;
+  width: 1920px;
+  height: 1080px;
+  flex-shrink: 0;
+ 
+  will-change: transform;
+}
+
+.vw-canvas__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: #333333;
+  pointer-events: none;
+}
+
+.vw-canvas__icon {
+  font-size: 44px;
+  opacity: 0.4;
+}
+
+.vw-canvas__hint {
+  font-size: 11px;
+  color: #444444;
+  margin: 0;
+}
+
+/* Timecode overlay */
+.vw-canvas__tc-overlay {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: bold;
+  color: rgba(0, 255, 200, 0.45);
+  letter-spacing: 0.08em;
+  pointer-events: none;
+  text-shadow: 0 0 6px rgba(0, 255, 200, 0.3);
+}
+
+
+
+/*   Buttons   */
+.vw-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: var(--vw-btn);
+  color: var(--vw-text-2);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: background 0.12s, color 0.12s, transform 0.08s;
+  font-family: inherit;
+}
+
+.vw-btn:hover {
+  background: var(--vw-btn-h);
+  color: var(--vw-text-1);
+}
+
+.vw-btn:active {
+  transform: scale(0.9);
+  background: #555555;
+}
+
+/* Play button  */
+.vw-btn--play {
+  width: 36px;
+  height: 32px;
+  background: #1e3250;
+  color: var(--vw-play);
+  border-radius: 50%;
+}
+
+.vw-btn--play:hover {
+  background: #263f66;
+  color: #6aaff5;
+}
+
+/* Canvas el  */
+.vw-canvas__el {
+  display: block;
+  width: 1920px;
+  height: 1080px;
+  border-radius: 2px;
+  pointer-events: none;
+  /* Checkerboard: transparent pixels show as classic grey pattern.
+     Two-tone 8×8 tiles using CSS gradient — zero JS, GPU-accelerated. */
+  background-color: #1a1a1a;
+  background-image:
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(-45deg, #2a2a2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2a2a2a 75%),
+    linear-gradient(-45deg, transparent 75%, #2a2a2a 75%);
+  background-size: 16px 16px;
+  background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+}
+
+/* Zoom level button in controls */
+.vw-zoom-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--vw-text-2);
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 2px 7px;
+  border-radius: 4px;
+  cursor: pointer;
+  min-width: 38px;
+  text-align: center;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  margin-right: 6px;
+}
+.vw-zoom-btn:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(255,255,255,0.18);
+  color: var(--vw-text-1);
+}
+
+.vw-canvas__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(0,0,0,.55);
+  color: #666;
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.vw-canvas__spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid #333;
+  border-top-color: var(--vw-accent, #00ffcc);
+  border-radius: 50%;
+  animation: vw-spin 0.7s linear infinite;
+}
+
+@keyframes vw-spin { to { transform: rotate(360deg); } }
+
+/* Scrub bar — position:relative set in the block below */
+
+.vw-scrub__bar {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  accent-color: var(--vw-accent, #00ffcc);
+  background: transparent;
+}
+
+.vw-ws-dot { width: 7px; height: 7px; border-radius: 50%; background: #444; margin-right: 8px; transition: background 0.3s; flex-shrink: 0; }
+
+.vw-ws-dot--ok { background: #4dcc8f; box-shadow: 0 0 5px #4dcc8f88; }
+
+/* Resolution cap dropdown */
+.vw-res-select {
+  appearance: none;
+  background: var(--vw-btn, #2a2a2a);
+  color: var(--vw-text-1, #ccc);
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 2px 20px 2px 7px;
+  cursor: pointer;
+  outline: none;
+  /* Custom chevron */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 8px 5px;
+  min-width: 48px;
+  transition: border-color 0.15s;
+}
+.vw-res-select:hover  { border-color: #555; background-color: var(--vw-btn-h, #3a3a3a); }
+.vw-res-select:focus  { border-color: var(--vw-accent, #00ffcc); }
+.vw-res-select option { background: #1e1e1e; color: #ccc; }
+
+/* PNG / JPEG format toggle */
+.vw-format-btn {
+  appearance: none;
+  background: var(--vw-btn, #2a2a2a);
+  color: var(--vw-text-2, #888);
+  border: 1px solid #333;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: 'Inter', monospace, inherit;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s, color 0.15s, box-shadow 0.15s;
+  min-width: 36px;
+}
+.vw-format-btn:hover {
+  border-color: #555;
+  background: var(--vw-btn-h, #3a3a3a);
+  color: var(--vw-text-1, #ccc);
+}
+/* PNG active  */
+.vw-format-btn--png {
+  color: #f59e0b;
+  border-color: #f59e0b55;
+  box-shadow: 0 0 6px #f59e0b44;
+}
+.vw-format-btn--png:hover {
+  border-color: #f59e0b99;
+  box-shadow: 0 0 10px #f59e0b66;
+}
+
+/* -- Native GPU badge ------------------------------------------------------- */
+.vw-gpu-badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: #fff;
+  user-select: none;
+  animation: vw-gpu-pulse 2s ease-in-out infinite;
+}
+@keyframes vw-gpu-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.75; }
+}
+
+/* -- Controls grid: tc | transport+speed | inout | right ------------------- */
+.vw-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr;
+  align-items: center;
+  height: 40px;
+  padding: 0 12px;
+  background: var(--vw-bar);
+  border-top: 1px solid var(--vw-border);
+  flex-shrink: 0;
+  gap: 8px;
+}
+
+.vw-controls__tc {
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  font-weight: bold;
+  color: var(--vw-accent);
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 8px rgba(0, 255, 200, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.vw-controls__transport {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.vw-controls__right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+/* -- Speed dropdown --------------------------------------------------------- */
+.vw-speed-select {
+  appearance: none;
+  background: var(--vw-btn, #2a2a2a);
+  color: var(--vw-accent, #00ffcc);
+  border: 1px solid rgba(0,255,204,0.25);
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  padding: 2px 20px 2px 7px;
+  cursor: pointer;
+  outline: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%2300ffcc'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 8px 5px;
+  min-width: 48px;
+  transition: border-color 0.15s;
+}
+.vw-speed-select:hover { border-color: rgba(0,255,204,0.5); background-color: var(--vw-btn-h, #3a3a3a); }
+.vw-speed-select:focus { border-color: var(--vw-accent, #00ffcc); }
+.vw-speed-select option { background: #1e1e1e; color: #ccc; }
+
+/* -- In/Out point controls -------------------------------------------------- */
+.vw-controls__inout {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.vw-inout-btn {
+  width: auto;
+  padding: 0 7px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Inter', inherit;
+  letter-spacing: 0.06em;
+  color: var(--vw-text-2);
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.vw-inout-btn--active {
+  color: var(--vw-accent, #00ffcc);
+  border-color: rgba(0,255,204,0.3);
+  background: rgba(0,255,204,0.08);
+  box-shadow: 0 0 6px rgba(0,255,204,0.15);
+}
+
+.vw-inout-label {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: var(--vw-accent);
+  opacity: 0.7;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.vw-inout-clear {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  color: #888;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+.vw-inout-clear:hover { color: #ff6b6b; border-color: rgba(255,107,107,0.3); background: rgba(255,107,107,0.08); }
+
+/* -- Scrub bar: loop region highlight --------------------------------------- */
+.vw-scrub {
+  padding: 4px 12px;
+  background: var(--vw-bar, #1a1a1a);
+  flex-shrink: 0;
+  position: relative;
+}
+
+.vw-scrub__loop-region {
+  position: absolute;
+  top: 4px;
+  height: 4px;
+  background: rgba(0, 255, 204, 0.25);
+  border-top: 1px solid rgba(0, 255, 204, 0.6);
+  border-bottom: 1px solid rgba(0, 255, 204, 0.6);
+  pointer-events: none;
+  z-index: 1;
+}

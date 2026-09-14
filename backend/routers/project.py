@@ -52,7 +52,7 @@ class SaveRequest(BaseModel):
 
 
 class LoadRequest(BaseModel):
-    filepath: str   # may be a folder or a .echo file
+    filepath: str    
 
 
 # Folder structure helpers  
@@ -61,7 +61,7 @@ def _project_folder(req: SaveRequest) -> "Path":
     from pathlib import Path
     if req.folderPath:
         return Path(req.folderPath)
-    # Legacy: derive folder from filepath stem
+     
     p = Path(req.filepath)
     if p.suffix == ".echo":
         return p.parent / p.stem

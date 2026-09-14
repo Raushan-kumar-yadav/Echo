@@ -1,0 +1,651 @@
+﻿import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useWebCompSync } from './useWebCompSync';
+import {
+  openPreviewSocket,
+  playbackPlay, playbackPause, playbackSeek,
+  getPlaybackState, frameUrl, setPreviewScale,
+  setPlaybackSpeed, setPlaybackInOut,
+} from '../../api/useApi';
+import { useTool } from '../../context/toolContext';
+import { useSelection } from '../../context/selectionContext';
+import OverlayCanvas from './OverlayCanvas';
+import { AudioEngine, type AudioClipInfo } from './audioEngine';
+import './ViewportWidget.css';
+
+function framesToTimecode(frame: number, fps = 30): string {
+  const f  = Math.floor(frame);
+  const mm = Math.floor(f / (fps * 60));
+  const ss = Math.floor((f / fps) % 60);
+  const fr = f % Math.max(fps, 1);
+  return [mm, ss, fr].map(n => String(n).padStart(2, '0')).join(':');
+}
+
+// SVG icons  
+
+const IconPrev = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+    <rect x="0" y="1" width="2" height="10" rx="1"/>
+    <path d="M10 1 L3 6 L10 11 Z"/>
+  </svg>
+);
+const IconNext = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+    <rect x="10" y="1" width="2" height="10" rx="1"/>
+    <path d="M2 1 L9 6 L2 11 Z"/>
+  </svg>
+);
+const IconPlay = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <path d="M4 2 L14 8 L4 14 Z"/>
+  </svg>
+);
+const IconPause = () => (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+    <rect x="3" y="2" width="4" height="12" rx="1.5"/>
+    <rect x="9" y="2" width="4" height="12" rx="1.5"/>
+  </svg>
+);
+const IconFullscreen = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <path d="M1 5V1h4M9 1h4v4M13 9v4H9M5 13H1V9"/>
+  </svg>
+);
+
+//   Component  
+
+export default function ViewportWidget() {
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [totalFrames,  setTotalFrames]  = useState(1800);
+  const [fps, setFps] = useState(30);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [connected, setConnected] = useState(false);
+  const [retryCount, setRetryCount]   = useState(0);
+  const [resScale, setResScale] = useState<number>(0.5);
+  const [previewFormat, setPreviewFormat] = useState<'jpeg' | 'png'>('png');
+  const [speed, setSpeed] = useState(1.0);
+  const [inPoint,  setInPoint]  = useState<number | null>(null);
+  const [outPoint, setOutPoint] = useState<number | null>(null);
+  const loopActive = inPoint !== null && outPoint !== null;
+
+  // The canvas receives decoded  
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const audioRef = useRef<AudioEngine | null>(null);
+
+  // Local frame ref updated on every native frame event  
+  const frameNumRef = useRef<number>(0);
+  // Throttled React state update  
+  const lastStateFrameRef = useRef<number>(-1);
+
+  // Native render engine 
+  const [isNativeRender, setIsNativeRender] = useState(false);
+  const nativeBufferRef = useRef<ArrayBuffer | null>(null);
+  const nativeWidthRef  = useRef(1920);
+  const nativeHeightRef = useRef(1080);
+  // Reactive canvas dimensions  
+  const [nativeDims, setNativeDims] = useState({ w: 1920, h: 1080 });
+
+  // Sync WebComp offscreen windows and push frames into C++ cache
+  useWebCompSync();
+
+  // Check if native addon is available and cache the SharedArrayBuffer
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.isNativeRender) return;
+    api.isNativeRender().then(async (isNative: boolean) => {
+      if (!isNative) return;
+      setIsNativeRender(true);
+      const buf = await api.getRenderBuffer();
+      if (buf) nativeBufferRef.current = buf;
+      const stats = await api.getRenderStats();
+      if (stats) {
+        nativeWidthRef.current  = stats.width;
+        nativeHeightRef.current = stats.height;
+        // Drive canvas element size reactively so putImageData fills it correctly
+        setNativeDims({ w: stats.width, h: stats.height });
+      }
+    });
+  }, []);
+
+  // Subscribe to frame-ready events  
+  useEffect(() => {
+    if (!isNativeRender) return;
+    const api = (window as any).electronAPI;
+    if (!api?.onFrameReady) return;
+
+    const cleanup = api.onFrameReady(async (frameNum: number) => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      // Get fresh pixel buffer from native compositor 
+      const buf: ArrayBuffer | null = await api.getRenderBuffer();
+      if (!buf) return;
+
+      const w = nativeWidthRef.current;
+      const h = nativeHeightRef.current;
+      if (canvas.width !== w)  canvas.width  = w;
+      if (canvas.height !== h) canvas.height = h;
+
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const rgba = new Uint8ClampedArray(buf, 0, w * h * 4);
+      ctx.putImageData(new ImageData(rgba, w, h), 0, 0);
+
+      frameNumRef.current = frameNum;
+      window.dispatchEvent(new CustomEvent('echo:frame', { detail: frameNum }));
+      audioRef.current?.tick(frameNum);
+
+      if (frameNum !== lastStateFrameRef.current) {
+        lastStateFrameRef.current = frameNum;
+        setCurrentFrame(frameNum);
+      }
+    });
+
+    return cleanup;
+  }, [isNativeRender]);
+
+   
+  // Audio engine  
+  useEffect(() => {
+     
+    const engine = new AudioEngine(fps, 0)
+    audioRef.current = engine
+
+    let currentPort = 0
+
+    async function loadClips(port: number) {
+      if (!port) return
+      try {
+        const r = await fetch(`http://127.0.0.1:${port}/timeline/audio-clips`)
+        if (r.ok) {
+          const d = await r.json()
+          engine.setFps(fps)
+          engine.update(d.clips as AudioClipInfo[])
+        }
+      } catch { /* backend not ready */ }
+    }
+
+    // Poll for valid port
+    const portPollId = setInterval(() => {
+      const p: number = (window as any).__ECHO_PORT__ ?? 0
+      if (p && p !== currentPort) {
+        currentPort = p
+        engine.updatePort(p)
+        loadClips(p)
+      } else if (currentPort) {
+        loadClips(currentPort)
+      }
+    }, 1000)
+
+    // Also react to track changes
+    const onTracksChanged = () => loadClips(currentPort)
+    window.addEventListener('echo:tracks-changed', onTracksChanged)
+    window.addEventListener('echo:render-now', onTracksChanged)
+
+    return () => {
+      clearInterval(portPollId)
+      window.removeEventListener('echo:tracks-changed', onTracksChanged)
+      window.removeEventListener('echo:render-now', onTracksChanged)
+      engine.destroy()
+      audioRef.current = null
+    }
+  }, [])   
+
+  //   Poll playback state 
+  useEffect(() => {
+    let id: ReturnType<typeof setInterval> | null = null;
+
+    function startPolling(port: number) {
+      id = setInterval(async () => {
+        try {
+          const r = await fetch(`http://127.0.0.1:${port}/playback/state`);
+          if (!r.ok) return;
+          const data = await r.json();
+           
+          setIsPlaying(data.playing);
+          setFps(data.fps);
+          setTotalFrames(data.totalFrames ?? 1800);
+          if (data.speed !== undefined) setSpeed(data.speed);
+          if (data.inPoint  !== undefined) setInPoint(data.inPoint);
+          if (data.outPoint !== undefined) setOutPoint(data.outPoint);
+        } catch { /* backend restarting */ }
+      }, 200);
+    }
+
+    const knownPort: number | null = (window as any).__ECHO_PORT__;
+    if (knownPort) {
+      startPolling(knownPort);
+    } else {
+      const handler = (e: Event) => startPolling((e as CustomEvent<number>).detail);
+      window.addEventListener('echo:port', handler, { once: true });
+      return () => { window.removeEventListener('echo:port', handler); };
+    }
+
+    return () => { if (id) clearInterval(id); };
+  }, []);
+
+  // Re-render current frame when inspector changes a param
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    const handler = () => {
+      const f = frameNumRef.current;
+      playbackSeek(f).catch(() => {});
+      if (isNativeRender) api?.renderSeek(f);
+    };
+    window.addEventListener('echo:render-now', handler);
+    return () => window.removeEventListener('echo:render-now', handler);
+  }, [isNativeRender]);
+
+  //   Controls  
+
+  const togglePlay = useCallback(async () => {
+    const api = (window as any).electronAPI;
+    if (isPlaying) {
+      await playbackPause();
+      if (isNativeRender) api?.renderPause();
+      audioRef.current?.pause();
+      setIsPlaying(false);
+    } else {
+      await playbackPlay();
+      if (isNativeRender) api?.renderPlay();
+      audioRef.current?.play(currentFrame);
+      setIsPlaying(true);
+    }
+  }, [isPlaying, currentFrame, isNativeRender]);
+
+  const stepFrame = useCallback(async (dir: 1 | -1) => {
+    const api = (window as any).electronAPI;
+    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    const next = Math.max(0, Math.min(totalFrames - 1, currentFrame + dir));
+    await playbackSeek(next);
+    if (isNativeRender) api?.renderSeek(next);
+    audioRef.current?.seek(next);
+    setCurrentFrame(next);
+  }, [isPlaying, currentFrame, totalFrames, isNativeRender]);
+
+  const handleScrub = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const api = (window as any).electronAPI;
+    const f = parseInt(e.target.value, 10);
+    if (isPlaying) { await playbackPause(); if (isNativeRender) api?.renderPause(); audioRef.current?.pause(); setIsPlaying(false); }
+    await playbackSeek(f);
+    if (isNativeRender) api?.renderSeek(f);
+    audioRef.current?.seek(f);
+    setCurrentFrame(f);
+  }, [isPlaying, isNativeRender]);
+
+  const handleResChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const scale = parseFloat(e.target.value);
+    setResScale(scale);
+     
+    try { await setPreviewScale(scale); } catch { /* backend */ }
+    
+    (window as any).electronAPI?.renderSetPreviewScale?.(scale)
+  }, []);
+
+  const handleSpeedChange = useCallback(async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const s = parseFloat(e.target.value);
+    setSpeed(s);
+    audioRef.current?.setRate(s);
+    try { await setPlaybackSpeed(s); } catch { /* backend */ }
+  }, []);
+
+  const handleSetInPoint = useCallback(async () => {
+    const f = currentFrame;
+    const newOut = outPoint !== null && outPoint <= f ? null : outPoint;
+    setInPoint(f);
+    if (newOut !== outPoint) setOutPoint(newOut);
+    try { await setPlaybackInOut(f, newOut !== outPoint ? newOut : outPoint); } catch {}
+  }, [currentFrame, outPoint]);
+
+  const handleSetOutPoint = useCallback(async () => {
+    const f = currentFrame;
+    const newIn = inPoint !== null && inPoint >= f ? null : inPoint;
+    setOutPoint(f);
+    if (newIn !== inPoint) setInPoint(newIn);
+    try { await setPlaybackInOut(newIn !== inPoint ? newIn : inPoint, f); } catch {}
+  }, [currentFrame, inPoint]);
+
+  const handleClearInOut = useCallback(async () => {
+    setInPoint(null);
+    setOutPoint(null);
+    try { await setPlaybackInOut(null, null); } catch {}
+  }, []);
+
+  const handleFormatToggle = useCallback(async () => {
+    const next = previewFormat === 'jpeg' ? 'png' : 'jpeg';
+    setPreviewFormat(next);
+    try {
+      const port = (window as any).__ECHO_PORT__ ?? 8000;
+      await fetch(`http://127.0.0.1:${port}/preview/format`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: next }),
+      });
+    } catch { /* backend busy */ }
+  }, [previewFormat]);
+
+  const [canvasSize, setCanvasSize] = useState({ w: 1920, h: 1080 });
+  const { activeTool, penOutputMode } = useTool();
+  const { selected } = useSelection();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Pan / Zoom state  
+  const [vpZoom, setVpZoom] = useState(1);     
+  const [vpPan, setVpPan] = useState({ x: 0, y: 0 });  
+  const spaceDown = useRef(false);
+  const mmDown = useRef(false);   
+  const lastPan = useRef({ x: 0, y: 0 });
+
+  // Fit canvas to container on mount / resize
+  const fitToFrame = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    const projW = nativeWidthRef.current;
+    const projH = nativeHeightRef.current;
+    const scaleW = (width - 24)  / projW;
+    const scaleH = (height - 24) / projH;
+    setVpZoom(Math.min(scaleW, scaleH));
+    setVpPan({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => { fitToFrame(); }, [fitToFrame]);
+
+   
+  const handleWheel = useCallback((e: WheelEvent) => {
+    if (!e.ctrlKey && !spaceDown.current) return;
+    e.preventDefault();
+    const el = containerRef.current;
+    if (!el) return;
+    const rect   = el.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left - rect.width  / 2;
+    const mouseY = e.clientY - rect.top  - rect.height / 2;
+    const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+    setVpZoom(prev => {
+      const next = Math.max(0.05, Math.min(8, prev * factor));
+      const ratio = next / prev;
+      setVpPan(p => ({
+        x: mouseX + (p.x - mouseX) * ratio,
+        y: mouseY + (p.y - mouseY) * ratio,
+      }));
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
+
+  // Middle-mouse drag to pan
+  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const isMM    = e.button === 1;
+    const isSpace = spaceDown.current && e.button === 0;
+    if (!isMM && !isSpace) return;
+    e.preventDefault();
+    if (isMM) mmDown.current = true;
+    lastPan.current = { x: e.clientX, y: e.clientY };
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!mmDown.current && !spaceDown.current) return;
+    if (e.buttons === 0) { mmDown.current = false; return; }  
+    const dx = e.clientX - lastPan.current.x;
+    const dy = e.clientY - lastPan.current.y;
+    lastPan.current = { x: e.clientX, y: e.clientY };
+    setVpPan(p => ({ x: p.x + dx, y: p.y + dy }));
+  }, []);
+
+  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button === 1) mmDown.current = false;
+  }, []);
+
+  // Space key for pan mode
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).matches('input,textarea,select')) return;
+      if (e.code === 'Space') {
+        e.preventDefault();
+        spaceDown.current = true;
+      }
+      if (e.code === 'KeyF') fitToFrame();
+      // I = set in-point, O = set out-point
+      if (e.code === 'KeyI' && !e.altKey) handleSetInPoint();
+      if (e.code === 'KeyO' && !e.altKey) handleSetOutPoint();
+      // Alt+I / Alt+O = clear
+      if (e.code === 'KeyI' && e.altKey) handleClearInOut();
+      if (e.code === 'KeyO' && e.altKey) handleClearInOut();
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceDown.current = false;
+        mmDown.current = false;
+      }
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup',   up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup',   up);
+    };
+  }, [fitToFrame, handleSetInPoint, handleSetOutPoint, handleClearInOut]);
+
+  // Track rendered canvas size for OverlayCanvas
+  useEffect(() => {
+    const obs = new ResizeObserver(entries => {
+      for (const e of entries) {
+        const { width, height } = e.contentRect;
+        setCanvasSize({ w: Math.round(width * vpZoom), h: Math.round(height * vpZoom) });
+      }
+    });
+    if (containerRef.current) obs.observe(containerRef.current);
+    return () => obs.disconnect();
+  }, [vpZoom]);
+
+  const timecode = framesToTimecode(currentFrame, fps);
+
+  return (
+    <div className={`vw-root${isFullscreen ? ' vw-root--fullscreen' : ''}`} aria-label="Preview Viewport">
+      {/* Canvas area  */}
+      <div
+        className="vw-canvas"
+        ref={containerRef}
+        aria-label="Video preview area"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onDoubleClick={fitToFrame}
+        style={{ cursor: spaceDown.current ? 'grab' : 'default' }}
+      >
+        {/*   the element that moves with pan/zoom */}
+        <div
+          className="vw-stage"
+          style={{
+            transform: `translate(${vpPan.x}px, ${vpPan.y}px) scale(${vpZoom})`,
+            transformOrigin: 'center center',
+          }}
+        >
+          <canvas
+            ref={canvasRef}
+            className="vw-canvas__el"
+            width={nativeDims.w}
+            height={nativeDims.h}
+          />
+          {/* Pen / Mask overlay   */}
+          {activeTool === 'shape:path' && (
+            penOutputMode === 'mask' && selected?.type === 'clip' ? (
+              <OverlayCanvas
+                mode="mask"
+                clipId={selected.clipId}
+                width={1920}
+                height={1080}
+                currentFrame={currentFrame}
+                startFrame={(selected as any).startFrame ?? 0}
+                duration={(selected as any).duration ?? 150}
+              />
+            ) : (
+              <OverlayCanvas
+                mode="pen"
+                width={1920}
+                height={1080}
+                currentFrame={currentFrame}
+              />
+            )
+          )}
+
+          {/* Shape draw overlay */}
+          {activeTool !== 'shape:path' && activeTool.startsWith('shape:') && (
+            <OverlayCanvas
+              mode="shape"
+              width={1920}
+              height={1080}
+            />
+          )}
+        </div>{/* /vw-stage */}
+
+        {!connected && !isNativeRender && (
+          <div className="vw-canvas__overlay">
+            <div className="vw-canvas__spinner" />
+            <p>{retryCount === 0 ? 'Connecting to engine…' : `Engine starting… (retry ${retryCount})`}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Scrub bar */}
+      <div className="vw-scrub">
+        {/* In/Out region highlight */}
+        {loopActive && (
+          <div
+            className="vw-scrub__loop-region"
+            style={{
+              left:  `${(inPoint!  / Math.max(1, totalFrames - 1)) * 100}%`,
+              width: `${((outPoint! - inPoint!) / Math.max(1, totalFrames - 1)) * 100}%`,
+            }}
+          />
+        )}
+        <input
+          type="range"
+          className="vw-scrub__bar"
+          min={0}
+          max={totalFrames - 1}
+          step={1}
+          value={Math.floor(currentFrame)}
+          onChange={handleScrub}
+          aria-label="Scrub timeline"
+        />
+      </div>
+
+      {/* Transport controls */}
+      <div className="vw-controls">
+        <div className="vw-controls__tc" aria-label="Current timecode" role="timer">
+          {timecode}
+        </div>
+        <div className="vw-controls__transport">
+          <button id="vw-prev-frame" className="vw-btn" title="Previous frame" onClick={() => stepFrame(-1)}>
+            <IconPrev />
+          </button>
+          <button id="vw-play-pause" className="vw-btn vw-btn--play" title={isPlaying ? 'Pause' : 'Play'} onClick={togglePlay}>
+            {isPlaying ? <IconPause /> : <IconPlay />}
+          </button>
+          <button id="vw-next-frame" className="vw-btn" title="Next frame" onClick={() => stepFrame(1)}>
+            <IconNext />
+          </button>
+          {/* Speed selector */}
+          <select
+            id="vw-speed-select"
+            className="vw-speed-select"
+            value={speed}
+            onChange={handleSpeedChange}
+            title="Playback speed"
+            aria-label="Playback speed"
+          >
+            <option value={0.25}>0.25×</option>
+            <option value={0.5}>0.5×</option>
+            <option value={1.0}>1×</option>
+            <option value={2.0}>2×</option>
+          </select>
+        </div>
+        {/* In/Out point controls */}
+        <div className="vw-controls__inout">
+          <button
+            id="vw-set-in"
+            className={`vw-btn vw-inout-btn${inPoint !== null ? ' vw-inout-btn--active' : ''}`}
+            title={`Set In-point (I)${inPoint !== null ? ' — frame ' + inPoint : ''}`}
+            onClick={handleSetInPoint}
+          >
+            IN
+          </button>
+          {loopActive && (
+            <span className="vw-inout-label">
+              {inPoint}–{outPoint}
+            </span>
+          )}
+          <button
+            id="vw-set-out"
+            className={`vw-btn vw-inout-btn${outPoint !== null ? ' vw-inout-btn--active' : ''}`}
+            title={`Set Out-point (O)${outPoint !== null ? ' — frame ' + outPoint : ''}`}
+            onClick={handleSetOutPoint}
+          >
+            OUT
+          </button>
+          {loopActive && (
+            <button
+              id="vw-clear-inout"
+              className="vw-btn vw-inout-clear"
+              title="Clear loop region (Alt+I or Alt+O)"
+              onClick={handleClearInOut}
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <div className="vw-controls__right">
+          {/* Zoom indicator + reset */}
+          <button
+            className="vw-zoom-btn"
+            title="Zoom level — click to fit (or press F)"
+            onClick={fitToFrame}
+          >
+            {Math.round(vpZoom * 100)}%
+          </button>
+          <select
+            id="vw-res-select"
+            className="vw-res-select"
+            value={resScale}
+            onChange={handleResChange}
+            title="Preview decode resolution"
+            aria-label="Preview resolution"
+          >
+            <option value={1.0}>Full</option>
+            <option value={0.5}>1/2</option>
+            <option value={0.25}>1/4</option>
+            <option value={0.125}>1/8</option>
+          </select>
+          {/* PNG / JPEG toggle */}
+          <button
+            id="vw-format-toggle"
+            className={`vw-format-btn${previewFormat === 'png' ? ' vw-format-btn--png' : ''}`}
+            title={previewFormat === 'jpeg'
+              ? 'Preview: JPEG (fast, no alpha) — click to switch to PNG for opacity/mask accuracy'
+              : 'Preview: PNG (alpha-correct, slower) — click to switch back to JPEG'}
+            onClick={handleFormatToggle}
+            aria-label="Toggle preview format"
+          >
+            {previewFormat === 'jpeg' ? 'JPG' : 'PNG'}
+          </button>
+          <div className={`vw-ws-dot${connected || isNativeRender ? ' vw-ws-dot--ok' : ''}`}
+               title={isNativeRender ? 'Native GPU compositor active' : connected ? 'Engine connected' : 'Connecting…'} />
+          {isNativeRender && (
+            <span className="vw-gpu-badge" title="Vulkan/Skia native render active">GPU</span>
+          )}
+          <button id="vw-fullscreen" className="vw-btn" title="Toggle fullscreen" onClick={() => setIsFullscreen(f => !f)}>
+            <IconFullscreen />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

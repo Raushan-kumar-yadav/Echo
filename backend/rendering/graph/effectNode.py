@@ -6,7 +6,6 @@ from backend.rendering.renderContext import RenderContext
 
 class EffectNode(BaseNode):
 
-    # Effects that overlay on top of already-rendered content (not saveLayer-based)
     _OVERLAY_EFFECTS = {"VignetteEffect", "ChromaKeyEffect"}
 
     def __init__(self, effect, clipId: str) -> None:
@@ -19,7 +18,7 @@ class EffectNode(BaseNode):
 
         effect = self.effect
         if not getattr(effect, "enabled", True):
-            # Effect disabled — just pass through
+            # Effect disabled 
             ctx.canvas.save()
             try:
                 self.inputs[0].execute(ctx)
@@ -31,7 +30,7 @@ class EffectNode(BaseNode):
         canvas = ctx.canvas
 
         if effect_class in self._OVERLAY_EFFECTS:
-            # Overlay effects: render child first, then paint on top
+             
             canvas.save()
             try:
                 self.inputs[0].execute(ctx)
@@ -42,13 +41,10 @@ class EffectNode(BaseNode):
             finally:
                 canvas.restore()
         else:
-            # Filter effects (Blur, Sharpen, BrightnessContrast, HSL, ColorGrade):
-            # Build a Paint with the effect's ImageFilter/ColorFilter, open a
-            # saveLayer so the child renders INTO the filtered layer.
+             
             paint = skia.Paint()
             try:
-                # Temporarily redirect to a dummy canvas to extract the paint
-                # that effect.apply() would install, by monkey-patching saveLayer.
+                 
                 _captured: list[skia.Paint] = []
 
                 class _CaptureSurface:

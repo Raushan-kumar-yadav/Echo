@@ -1,11 +1,11 @@
-﻿ 
+ 
 from __future__ import annotations
 import os
 import pathlib
 
 # Path to bundled whisper models — centralized in AIModels/
 _HERE = pathlib.Path(__file__).parent
-_PROJECT_ROOT = _HERE.parent.parent  # backend/ai/ -> backend/ -> Echo/
+_PROJECT_ROOT = _HERE.parent.parent  # backend/ai/ -> backend/ -> Fade/
 WHISPER_MODELS_DIR = _PROJECT_ROOT / "AIModels" / "whisper"
 
 DEFAULT_MODEL = os.environ.get("FADE_WHISPER_MODEL", "small")

@@ -1,0 +1,202 @@
+﻿import { BrowserWindow } from 'electron'
+
+interface WebCompInstance {
+  win: BrowserWindow
+  htmlUrl: string
+  width: number
+  height: number
+  fps: number
+  frameCache: Map<number, Buffer>
+  ready: boolean
+  readyPromise: Promise<void>
+ 
+  captureQueue: Promise<Buffer | null>
+}
+
+const instances = new Map<string, WebCompInstance>()
+const MAX_CACHE_FRAMES = 360  
+
+export async function createWebComp(
+  webcompId: string, htmlUrl: string,
+  width: number, height: number, fps: number
+): Promise<void> {
+  if (instances.has(webcompId)) destroyWebComp(webcompId)
+
+  const win = new BrowserWindow({
+    width,
+    height,
+    show: false,
+    frame: false,                       
+    transparent: true,                  
+    backgroundColor: '#00000000', 
+    paintWhenInitiallyHidden: true,
+    webPreferences: {
+      offscreen: true,
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,                   
+      backgroundThrottling: false,     
+    },
+  })
+
+   win.webContents.on('dom-ready', () => {
+    win.webContents.insertCSS(
+      'html, body { background: transparent !important; margin: 0; padding: 0; overflow: hidden; }'
+    ).catch(() => {})
+  })
+
+  win.webContents.setFrameRate(Math.min(fps, 60))
+
+  const readyPromise = new Promise<void>(resolve => {
+    win.webContents.once('did-finish-load', () => resolve())
+    win.webContents.once('did-fail-load', (_ev: any, code: number, desc: string) => {
+      console.error(`[WebComp] did-fail-load ${webcompId}: ${code} ${desc}`)
+      resolve()   
+    })
+    // Timeout safety 
+    setTimeout(() => {
+      console.warn(`[WebComp] readyPromise timeout for ${webcompId}`)
+      resolve()
+    }, 10_000)
+  })
+  win.loadURL(htmlUrl)
+
+  const inst: WebCompInstance = {
+    win, htmlUrl, width, height, fps,
+    frameCache: new Map(),
+    ready: false,
+    readyPromise,
+    captureQueue: Promise.resolve(null),  // serial capture chain
+  }
+  instances.set(webcompId, inst)
+  console.log(`[WebComp] Created ${webcompId} (${width}x${height}@${fps}fps)`)
+
+   await readyPromise
+  inst.ready = true
+  console.log(`[WebComp] Ready ${webcompId}`)
+}
+
+export async function captureFrame(
+  webcompId: string, frame: number
+): Promise<Buffer | null> {
+  const inst = instances.get(webcompId)
+  if (!inst) return null
+  if (inst.win.isDestroyed()) return null
+
+  // Wait for page to finish loading on first capture
+  if (!inst.ready) await inst.readyPromise
+
+  // JS-side LRU cache hit  
+  if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
+ 
+  const doCapture = async (): Promise<Buffer | null> => {
+    // Re-check cache inside the queue  
+    if (inst.frameCache.has(frame)) return inst.frameCache.get(frame)!
+    if (inst.win.isDestroyed()) return null
+
+    try {
+      // Inject frame number into the page
+      await inst.win.webContents.executeJavaScript(`
+        window.ECHO_FRAME = ${frame};
+        window.ECHO_TIME = ${frame / inst.fps};
+        window.ECHO_FPS = ${inst.fps};
+        window.ECHO_WIDTH = ${inst.width};
+        window.ECHO_HEIGHT = ${inst.height};
+        window.dispatchEvent(new CustomEvent('echo:frame', {
+          detail: { frame: ${frame}, time: ${frame / inst.fps} }
+        }));
+      `)
+
+      // Wait for render (double rAF ensures paint is complete)
+      await inst.win.webContents.executeJavaScript(
+        `new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))`
+      )
+
+      // Capture BGRA bitmap from Chromium
+      const nativeImage = await inst.win.webContents.capturePage()
+      const size = nativeImage.getSize()
+      const bgra = nativeImage.toBitmap()
+
+       const rgba = Buffer.alloc(size.width * size.height * 4)
+      for (let i = 0; i < size.width * size.height; i++) {
+        const o = i * 4
+        rgba[o + 0] = bgra[o + 2]  // R ← B
+        rgba[o + 1] = bgra[o + 1]  // G ← G
+        rgba[o + 2] = bgra[o + 0]  // B ← R
+        rgba[o + 3] = bgra[o + 3]  // A ← A
+      }
+
+      // LRU cache — keep last MAX_CACHE_FRAMES frames
+      inst.frameCache.set(frame, rgba)
+      if (inst.frameCache.size > MAX_CACHE_FRAMES) {
+        const oldest = inst.frameCache.keys().next().value
+        if (oldest !== undefined) inst.frameCache.delete(oldest)
+      }
+
+      return rgba
+    } catch (err) {
+      console.error(`[WebComp] captureFrame error ${webcompId}:${frame}`, err)
+      return null
+    }
+  }
+
+   const result = inst.captureQueue.then(doCapture, doCapture)
+  inst.captureQueue = result.then(() => null, () => null)  // advance queue silently
+  return result
+}
+
+export async function prefetchFrames(
+  webcompId: string, startFrame: number, count: number
+): Promise<void> {
+  for (let f = startFrame; f < startFrame + count; f++) {
+    await captureFrame(webcompId, f)
+  }
+}
+
+export function updateParams(
+  webcompId: string, params: Record<string, any>
+): void {
+  const inst = instances.get(webcompId)
+  if (!inst) return
+  /* Clear cached frames  */
+  inst.frameCache.clear()
+  inst.win.webContents.executeJavaScript(`
+    window.ECHO_PARAMS = ${JSON.stringify(params)};
+    window.dispatchEvent(new CustomEvent('echo:params', {
+      detail: ${JSON.stringify(params)}
+    }));
+  `).catch(() => {})
+}
+
+export function reloadWebComp(webcompId: string): void {
+  const inst = instances.get(webcompId)
+  if (!inst) return
+  inst.frameCache.clear()
+  inst.win.webContents.reload()
+  console.log(`[WebComp] Reloaded ${webcompId}`)
+}
+
+export function destroyWebComp(webcompId: string): void {
+  const inst = instances.get(webcompId)
+  if (inst) {
+    inst.win.destroy()
+    inst.frameCache.clear()
+    instances.delete(webcompId)
+    console.log(`[WebComp] Destroyed ${webcompId}`)
+  }
+}
+
+export function destroyAll(): void {
+  for (const id of instances.keys()) destroyWebComp(id)
+}
+
+ 
+export function getActiveInstances(): Array<{ webcompId: string; width: number; height: number }> {
+  const result: Array<{ webcompId: string; width: number; height: number }> = []
+  for (const [id, inst] of instances.entries()) {
+    if (!inst.win.isDestroyed()) {
+      result.push({ webcompId: id, width: inst.width, height: inst.height })
+    }
+  }
+  return result
+}

@@ -1,4 +1,4 @@
- 
+﻿ 
 const lt = document.getElementById('lt');
 const bar = document.getElementById('bar');
 const nameEl = document.getElementById('nameText');
@@ -18,7 +18,7 @@ function easeInCubic(t) {
   return t * t * t;
 }
 
-window.addEventListener('fade:frame', (e) => {
+window.addEventListener('echo:frame', (e) => {
   const { frame } = e.detail;
 
   let progress;
@@ -39,7 +39,7 @@ window.addEventListener('fade:frame', (e) => {
   lt.style.opacity = progress;
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('echo:params', (e) => {
   const p = e.detail;
   if (p.name) nameEl.textContent = p.name;
   if (p.title) titleEl.textContent = p.title;

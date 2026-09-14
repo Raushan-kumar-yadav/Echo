@@ -1,0 +1,88 @@
+﻿/** inspectorApi.ts — typed client for Inspector param + keyframe routes */
+
+function port(): number { return (window as any).__ECHO_PORT__ ?? 8000; }
+const base = () => `http://127.0.0.1:${port()}`;
+
+async function get<T>(path: string): Promise<T> {
+  const r = await fetch(`${base()}${path}`);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`${base()}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function del(path: string): Promise<void> {
+  await fetch(`${base()}${path}`, { method: 'DELETE' });
+}
+
+//   Types  
+
+export type InterpMode = 'constant' | 'linear' | 'bezier' | 'ease_in' | 'ease_out' | 'ease_both';
+export type ParamType  = 'float' | 'int' | 'toggle' | 'vec2' | 'vec3' | 'vec4';
+
+export interface ParamRow {
+  id: string;
+  label: string;
+  type: ParamType;
+  min: number;
+  max: number;
+  default: number;
+  group: string;
+  value: number;
+  isAnimated:  boolean;
+  hasKeyframe: boolean;
+  keyframes:   number[];
+}
+
+export interface ClipParams {
+  clipId: string;
+  clipType: string;
+  startFrame: number;
+  duration: number;
+  params: ParamRow[];
+}
+
+export interface KFDef {
+  frame: number;
+  value: number;
+  interp: InterpMode;
+  handle_in_f:  number;
+  handle_in_v:  number;
+  handle_out_f: number;
+  handle_out_v: number;
+}
+
+export interface KFListResult {
+  frames: KFDef[];
+  allFrames: number[];
+  vecType: ParamType;
+  components: number;
+}
+
+//   API calls  
+
+export const inspectorApi = {
+  getParams: (clipId: string, frame: number): Promise<ClipParams> =>
+    get(`/clips/${clipId}/params?frame=${frame}`),
+
+  setParam: (clipId: string, key: string, value: number, frame = -1) =>
+    post(`/clips/${clipId}/params/${key}`, { value, frame }),
+
+  addKeyframe: (clipId: string, key: string, kf: KFDef) =>
+    post(`/clips/${clipId}/keyframes/${key}`, kf),
+
+  listKeyframes: (clipId: string, key: string): Promise<KFListResult> =>
+    get(`/clips/${clipId}/keyframes/${key}`), 
+
+  removeKeyframe: (clipId: string, key: string, frame: number) =>
+    del(`/clips/${clipId}/keyframes/${key}/${frame}`),
+
+  moveKeyframe: (clipId: string, key: string, fromFrame: number, toFrame: number) =>
+    post(`/clips/${clipId}/keyframes/${key}/move`, { from_frame: fromFrame, to_frame: toFrame }),
+};

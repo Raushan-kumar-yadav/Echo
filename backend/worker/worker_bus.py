@@ -44,14 +44,14 @@ class WorkerBus:
             target=sandbox_worker.worker_main,
             args=(self._job_queue, self._result_queue, self._cancel_queue, parent_syspath),
             daemon=True,
-            name="FadeSandboxWorker",
+            name="EchoSandboxWorker",
         )
         self._process.start()
 
         self._drain_thread = threading.Thread(
             target=self._drain_results,
             daemon=True,
-            name="FadeWorkerDrain",
+            name="EchoWorkerDrain",
         )
         self._drain_thread.start()
 
@@ -59,7 +59,7 @@ class WorkerBus:
         self._watchdog_thread = threading.Thread(
             target=self._watchdog,
             daemon=True,
-            name="FadeWorkerWatchdog",
+            name="EchoWorkerWatchdog",
         )
         self._watchdog_thread.start()
         print("[WorkerBus] sandbox worker started", flush=True)

@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import json
 import asyncio
@@ -12,46 +12,46 @@ ai_router = APIRouter(tags=["ai"])
 
 # Module-level tool label map 
 _TOOL_LABELS: dict[str, str] = {
-    "get_timeline_state": "Reading timelineâ€¦",
-    "get_library": "Scanning libraryâ€¦",
-    "get_library_assets": "Scanning libraryâ€¦",
-    "place_clip": "Placing clipâ€¦",
-    "add_text_clip": "Adding textâ€¦",
-    "add_shape_clip": "Drawing shapeâ€¦",
-    "split_clip": "Splitting clipâ€¦",
-    "trim_clip": "Trimming clipâ€¦",
-    "move_clip": "Moving clipâ€¦",
-    "delete_clip": "Deleting clipâ€¦",
-    "add_transition": "Adding transitionâ€¦",
-    "add_transitions_between_all_clips": "Adding transitionsâ€¦",
-    "apply_effect_to_clip": "Applying effectâ€¦",
-    "download_videos": "Downloading footageâ€¦",
-    "download_images": "Downloading imagesâ€¦",
-    "schedule_download": "Scheduling downloadâ€¦",
-    "generate_image": "Generating imageâ€¦",
-    "search_video_scenes": "Searching scenesâ€¦",
-    "get_asset_context": "Reading assetâ€¦",
-    "get_clip_context": "Reading clipâ€¦",
-    "describe_clip": "Inspecting clipâ€¦",
-    "describe_selected_clip": "Inspecting clipâ€¦",
-    "get_timeline_context": "Reading contextâ€¦",
-    "create_news_video": "Building news videoâ€¦",
-    "create_webcomp": "Building WebCompâ€¦",
-    "generate_tts": "Generating voiceâ€¦",
-    "check_job_status": "Checking jobâ€¦",
-    "animate_property": "Animatingâ€¦",
-    "apply_curve_preset": "Applying curveâ€¦",
-    "search_news": "Searching newsâ€¦",
-    "find_free_overlay_track": "Finding overlay trackâ€¦",
-    "add_track": "Adding trackâ€¦",
-    "remove_silence": "Removing silenceâ€¦",
-    "generate_captions": "Generating captionsâ€¦",
-    "undo": "Undoingâ€¦",
-    "redo": "Redoingâ€¦",
+    "get_timeline_state": "Reading timeline…",
+    "get_library": "Scanning library…",
+    "get_library_assets": "Scanning library…",
+    "place_clip": "Placing clip…",
+    "add_text_clip": "Adding text…",
+    "add_shape_clip": "Drawing shape…",
+    "split_clip": "Splitting clip…",
+    "trim_clip": "Trimming clip…",
+    "move_clip": "Moving clip…",
+    "delete_clip": "Deleting clip…",
+    "add_transition": "Adding transition…",
+    "add_transitions_between_all_clips": "Adding transitions…",
+    "apply_effect_to_clip": "Applying effect…",
+    "download_videos": "Downloading footage…",
+    "download_images": "Downloading images…",
+    "schedule_download": "Scheduling download…",
+    "generate_image": "Generating image…",
+    "search_video_scenes": "Searching scenes…",
+    "get_asset_context": "Reading asset…",
+    "get_clip_context": "Reading clip…",
+    "describe_clip": "Inspecting clip…",
+    "describe_selected_clip": "Inspecting clip…",
+    "get_timeline_context": "Reading context…",
+    "create_news_video": "Building news video…",
+    "create_webcomp": "Building WebComp…",
+    "generate_tts": "Generating voice…",
+    "check_job_status": "Checking job…",
+    "animate_property": "Animating…",
+    "apply_curve_preset": "Applying curve…",
+    "search_news": "Searching news…",
+    "find_free_overlay_track": "Finding overlay track…",
+    "add_track": "Adding track…",
+    "remove_silence": "Removing silence…",
+    "generate_captions": "Generating captions…",
+    "undo": "Undoing…",
+    "redo": "Redoing…",
 }
 
 def _tool_label(name: str) -> str:
-    return _TOOL_LABELS.get(name, f"Running {name}â€¦")
+    return _TOOL_LABELS.get(name, f"Running {name}…")
 
 # Request models  
 
@@ -79,7 +79,7 @@ class CreateVideoRequest(BaseModel):
 @ai_router.get("/status")
 def ai_status():
     import os
-    provider = os.environ.get("ECHO_AI_PROVIDER", "ollama")
+    provider = os.environ.get("FADE_AI_PROVIDER", "ollama")
     model = os.environ.get("FADE_AI_MODEL", "")
 
     ollama_ok = False
@@ -127,7 +127,7 @@ async def ai_chat(req: ChatRequest):
             messages.append(HumanMessage(content=req.message))
 
             # Emit initial thinking status
-            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinkingâ€¦'})}\n\n"
+            yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
 
             last_phase = "thinking"
 
@@ -146,7 +146,7 @@ async def ai_chat(req: ChatRequest):
                     if text:
                         if last_phase != "responding":
                             last_phase = "responding"
-                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Respondingâ€¦'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'status', 'phase': 'responding', 'label': 'Responding…'})}\n\n"
                         yield f"data: {json.dumps({'type': 'token', 'content': text})}\n\n"
 
                 # Tool call start
@@ -164,7 +164,7 @@ async def ai_chat(req: ChatRequest):
                     output = event["data"].get("output", "")
                     content = str(output) if not isinstance(output, str) else output
                     last_phase = "thinking"
-                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinkingâ€¦'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'status', 'phase': 'thinking', 'label': 'Thinking…'})}\n\n"
                     yield f"data: {json.dumps({'type': 'tool_result', 'name': name, 'content': content})}\n\n"
 
             yield f"data: {json.dumps({'type': 'status', 'phase': 'idle', 'label': ''})}\n\n"
@@ -260,8 +260,8 @@ async def ai_create_video(req: CreateVideoRequest):
         def progress_cb(msg: str):
             """Called synchronously from pipeline nodes."""
              
-            if " â€” " in msg:
-                stage, detail = msg.split(" â€” ", 1)
+            if " — " in msg:
+                stage, detail = msg.split(" — ", 1)
                 stage = stage.replace("stage:", "").strip()
             else:
                 stage = "running"

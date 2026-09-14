@@ -2,7 +2,6 @@
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 
-# Scratch DB — used when no project is saved yet (keeps data out of the source tree)
 _SCRATCH_DB_PATH = str(Path.home() / ".echo" / "chroma_db")
 _DEFAULT_DB_PATH = _SCRATCH_DB_PATH  # alias used by legacy callers
 _embedder = SentenceTransformer("all-MiniLM-L6-v2")  # CPU-only, 80 MB
@@ -36,7 +35,6 @@ _ensure_client()
 def switch_db(db_path: str) -> None:
     """Point the indexer at a different ChromaDB folder (e.g. a loaded project)."""
     _ensure_client(db_path)
-    # Proactively heal any HNSW corruption from cross-process writes
     _try_heal_collection("video_segments")
     _try_heal_collection("image_assets")
 

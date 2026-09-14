@@ -1,4 +1,4 @@
-﻿ 
+ 
 from __future__ import annotations
 import uuid
 
@@ -17,7 +17,7 @@ TRANSITION_CATALOG = [
     },
     {
         "typeId": "fade_black",
-        "name": "Echo to Black",
+        "name": "Fade to Black",
         "icon": "◆",
         "category": "Basic",
         "desc": "Dip to black",

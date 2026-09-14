@@ -1,4 +1,4 @@
-// Cinematic Split — Fade WebComp Template
+﻿// Cinematic Split — Echo WebComp Template
 // Cormorant Garamond splits from center with a light-leak flash
 
 let p = Object.assign({
@@ -7,7 +7,7 @@ let p = Object.assign({
   eyebrow:    '2024 · OFFICIAL TRAILER',
   flashColor: '#ffffff',
   textColor:  '#e8dcc8',
-}, window.FADE_PARAMS || {});
+}, window.ECHO_PARAMS || {});
 
 const scene     = document.getElementById('scene');
 const flash     = document.getElementById('flash');
@@ -47,7 +47,7 @@ function prog(f,t0,t1)   { return clamp01((f-t0)/(t1-t0)); }
 // Letterbox height animation (bars shrink to 0 on reveal, grow back on exit)
 const LETTERBOX_H = 120;
 
-window.addEventListener('fade:frame', (e) => {
+window.addEventListener('echo:frame', (e) => {
   const f = e.detail.frame ?? e.detail ?? 0;
 
   // ── Light-leak flash (frame 0–10) ──────────────────────────────────────────
@@ -91,7 +91,7 @@ window.addEventListener('fade:frame', (e) => {
   brackets.forEach(b => { b.style.opacity = bp * bpo; });
 });
 
-window.addEventListener('fade:params', (e) => {
+window.addEventListener('echo:params', (e) => {
   Object.assign(p, e.detail);
   applyParams();
 });

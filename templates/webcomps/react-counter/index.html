@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8"/>
@@ -19,12 +19,12 @@
 <!-- 1. React from CDN (no build step needed) -->
 <!-- 2. Babel for in-browser JSX transform (dev convenience â€” swap for pre-built in prod) -->
 <!-- 3. Fade React Runtime â€” provides useCurrentFrame, interpolate, spring, etc. -->
-<script src="file:///E:/Editor_SIH/Fade/templates/webcomps/_runtime/fade-react.js"></script>
+<script src="file:///E:/Echo/templates/webcomps/_runtime/echo-react.js"></script>
 
 <!-- 4. Your composition â€” written exactly like a Remotion component -->
 <script type="text/babel">
 const {
-  FadeComposition,
+  EchoComposition,
   useCurrentFrame,
   useVideoConfig,
   useParams,
@@ -32,7 +32,7 @@ const {
   spring,
   Easing,
   mount,
-} = window.FadeReact;
+} = window.EchoReact;
 
 // â”€â”€ Sub-components (pure React, no Fade-specific imports needed) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -185,9 +185,9 @@ function Composition() {
 
 // â”€â”€ Mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 mount(
-  <FadeComposition durationFrames={150}>
+  <EchoComposition durationFrames={150}>
     <Composition />
-  </FadeComposition>
+  </EchoComposition>
 );
 </script>
 </body>

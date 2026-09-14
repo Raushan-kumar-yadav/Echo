@@ -6,7 +6,7 @@
   "fps": 30,
   "durationFrames": 150,
   "params": [
-    { "id": "title",    "label": "Title",        "type": "text",   "default": "echo" },
+    { "id": "title",    "label": "Title",        "type": "text",   "default": "FADE" },
     { "id": "accent",   "label": "Accent Color", "type": "color",  "default": "#00f0ff" },
     { "id": "subtitle", "label": "Subtitle",     "type": "text",   "default": "React-powered motion" }
   ]

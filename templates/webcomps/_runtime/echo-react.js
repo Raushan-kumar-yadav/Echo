@@ -1,5 +1,5 @@
 ﻿/**
- * fade-react.js  —  Fade WebComp React Runtime  (v1.0)
+ * echo-react.js  —  Echo WebComp React Runtime  (v1.0)
  *
  * Provides Remotion-compatible hooks for writing React-based WebComp templates.
  * Load AFTER react.production.min.js and react-dom.production.min.js.
@@ -7,10 +7,10 @@
  * How it works
  * ─────────────
  * Electron injects per-frame globals via executeJavaScript():
- *   window.FADE_FRAME, window.FADE_TIME, window.FADE_FPS,
- *   window.FADE_WIDTH, window.FADE_HEIGHT, window.FADE_PARAMS
- * then fires:  window.dispatchEvent(new CustomEvent('fade:frame', {...}))
- *              window.dispatchEvent(new CustomEvent('fade:params', {...}))
+ *   window.ECHO_FRAME, window.ECHO_TIME, window.ECHO_FPS,
+ *   window.ECHO_WIDTH, window.ECHO_HEIGHT, window.ECHO_PARAMS
+ * then fires:  window.dispatchEvent(new CustomEvent('echo:frame', {...}))
+ *              window.dispatchEvent(new CustomEvent('echo:params', {...}))
  *
  * This runtime subscribes to those events and re-renders React components.
  *
@@ -18,37 +18,37 @@
  * ─────
  * <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
  * <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
- * <script src="../../_runtime/fade-react.js"></script>
+ * <script src="../../_runtime/echo-react.js"></script>
  * <script type="text/babel" src="./composition.jsx"></script>
  *
  * In composition.jsx:
- *   const { FadeComposition, useCurrentFrame, useVideoConfig, interpolate, spring } = window.FadeReact;
+ *   const { EchoComposition, useCurrentFrame, useVideoConfig, interpolate, spring } = window.EchoReact;
  */
 (function (global) {
   'use strict';
   const React    = global.React;
   const ReactDOM = global.ReactDOM;
   if (!React || !ReactDOM) {
-    console.error('[fade-react] React and ReactDOM must be loaded first'); return;
+    console.error('[echo-react] React and ReactDOM must be loaded first'); return;
   }
 
   // ── Internal state ───────────────────────────────────────────────────────
-  let _frame  = global.FADE_FRAME  ?? 0;
-  let _fps    = global.FADE_FPS    ?? 30;
-  let _width  = global.FADE_WIDTH  ?? 1920;
-  let _height = global.FADE_HEIGHT ?? 1080;
-  let _params = global.FADE_PARAMS ?? {};
+  let _frame  = global.ECHO_FRAME  ?? 0;
+  let _fps    = global.ECHO_FPS    ?? 30;
+  let _width  = global.ECHO_WIDTH  ?? 1920;
+  let _height = global.ECHO_HEIGHT ?? 1080;
+  let _params = global.ECHO_PARAMS ?? {};
   const _subs = new Set();
   function _notify() { for (const fn of _subs) fn(); }
 
-  global.addEventListener('fade:frame', (e) => {
-    _frame  = e.detail?.frame ?? global.FADE_FRAME ?? _frame;
-    _fps    = global.FADE_FPS    ?? _fps;
-    _width  = global.FADE_WIDTH  ?? _width;
-    _height = global.FADE_HEIGHT ?? _height;
+  global.addEventListener('echo:frame', (e) => {
+    _frame  = e.detail?.frame ?? global.ECHO_FRAME ?? _frame;
+    _fps    = global.ECHO_FPS    ?? _fps;
+    _width  = global.ECHO_WIDTH  ?? _width;
+    _height = global.ECHO_HEIGHT ?? _height;
     _notify();
   });
-  global.addEventListener('fade:params', (e) => {
+  global.addEventListener('echo:params', (e) => {
     _params = Object.assign({}, _params, e.detail);
     _notify();
   });
@@ -56,9 +56,9 @@
   // ── VideoContext ─────────────────────────────────────────────────────────
   const VideoContext = React.createContext({ frame:0, fps:30, width:1920, height:1080, durationFrames:150, params:{} });
 
-  // ── <FadeComposition> ────────────────────────────────────────────────────
-  function FadeComposition({ durationFrames, children }) {
-    const dur = durationFrames ?? global.FADE_DURATION ?? 150;
+  // ── <EchoComposition> ────────────────────────────────────────────────────
+  function EchoComposition({ durationFrames, children }) {
+    const dur = durationFrames ?? global.ECHO_DURATION ?? 150;
     const [ctx, setCtx] = React.useState(() => ({
       frame:_frame, fps:_fps, width:_width, height:_height, durationFrames:dur, params:_params
     }));
@@ -132,12 +132,12 @@
   }
 
   // ── Export ───────────────────────────────────────────────────────────────
-  global.FadeReact = {
-    FadeComposition, VideoContext,
+  global.EchoReact = {
+    EchoComposition, VideoContext,
     useCurrentFrame, useVideoConfig, useParams,
     interpolate, spring, Easing,
     mount,
     React, ReactDOM,
   };
-  console.log('[fade-react] Runtime v1.0 ready');
+  console.log('[echo-react] Runtime v1.0 ready');
 })(window);
