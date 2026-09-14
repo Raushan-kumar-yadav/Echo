@@ -34,6 +34,8 @@ interface AiSettings {
   whisperModel: string;
   maxConcurrentIndex: number;
   availableModels: string[];
+  indexProvider: string;       // 'ollama' | 'gemini'
+  indexGeminiModel: string;    // e.g. 'gemini-1.5-flash'
   indexQueue: {
     maxConcurrent: number;
     active: number;
@@ -109,7 +111,7 @@ async function fetchAiSettings(): Promise<AiSettings | null> {
   } catch { return null; }
 }
 
-async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'|'whisperBackend'|'whisperModel'>>): Promise<AiSettings | null> {
+async function postAiSettings(delta: Partial<Pick<AiSettings,'visionModel'|'frameInterval'|'whisperBackend'|'whisperModel'|'indexProvider'|'indexGeminiModel'>>): Promise<AiSettings | null> {
   const port = getPort();
   if (!port) return null;
   try {
@@ -566,36 +568,63 @@ export default function SettingsPanel({ onClose }: Props) {
                       Smaller/faster models trade detail for speed.
                     </p>
 
-                    <div className="sp-subsection-title">🖥 Vision Model (Ollama)</div>
+                    {/* ── Vision Provider ── */}
+                    <div className="sp-subsection-title">🔍 Vision Provider</div>
 
                     <div className="sp-row">
-                      <label className="sp-label" htmlFor="idx-ollama-host">Ollama Endpoint</label>
-                      <input id="idx-ollama-host" className="sp-api-input sp-input--wide"
-                        placeholder="http://localhost:11434"
-                        defaultValue={env?.OLLAMA_HOST?.value || ''}
-                        onBlur={e => { if (e.target.value !== env?.OLLAMA_HOST?.value) applyEnv('OLLAMA_HOST', e.target.value); }}
-                        onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-                      />
-                    </div>
-
-                    <div className="sp-row">
-                      <label className="sp-label" htmlFor="set-vision-model">Vision model</label>
-                      <select id="set-vision-model" className="sp-select" value={ai.visionModel}
-                        onChange={e => applyAi({ visionModel: e.target.value })}>
-                        {ai.availableModels.length > 0
-                          ? ai.availableModels.map(m => (
-                              <option key={m} value={m}>{m}</option>
-                            ))
-                          : (
-                            <>
-                              <option value="moondream">moondream (fast, ~1-2s/frame)</option>
-                              <option value="gemma3:4b">gemma3:4b (detailed, ~8s/frame)</option>
-                              <option value="llava">llava (balanced)</option>
-                            </>
-                          )
-                        }
+                      <label className="sp-label" htmlFor="idx-provider">Provider</label>
+                      <select id="idx-provider" className="sp-select" value={ai.indexProvider || 'ollama'}
+                        onChange={e => applyAi({ indexProvider: e.target.value })}>
+                        <option value="ollama">🖥 Ollama (local, no API key needed)</option>
+                        <option value="gemini">✨ Google Gemini (cloud, fast)</option>
                       </select>
                     </div>
+
+                    {/* ── Ollama section ── */}
+                    {(ai.indexProvider || 'ollama') === 'ollama' && (<>
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="idx-ollama-host">Ollama Endpoint</label>
+                        <input id="idx-ollama-host" className="sp-api-input sp-input--wide"
+                          placeholder="http://localhost:11434"
+                          defaultValue={env?.OLLAMA_HOST?.value || ''}
+                          onBlur={e => { if (e.target.value !== env?.OLLAMA_HOST?.value) applyEnv('OLLAMA_HOST', e.target.value); }}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                        />
+                      </div>
+
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="set-vision-model">Vision model</label>
+                        <select id="set-vision-model" className="sp-select" value={ai.visionModel}
+                          onChange={e => applyAi({ visionModel: e.target.value })}>
+                          {ai.availableModels.length > 0
+                            ? ai.availableModels.map(m => (
+                                <option key={m} value={m}>{m}</option>
+                              ))
+                            : (<>
+                                <option value="moondream">moondream (fast, ~1-2s/frame)</option>
+                                <option value="llava">llava (balanced)</option>
+                                <option value="llava-phi3">llava-phi3 (small)</option>
+                              </>)
+                          }
+                        </select>
+                      </div>
+                    </>)}
+
+                    {/* ── Gemini section ── */}
+                    {(ai.indexProvider || 'ollama') === 'gemini' && (<>
+                      <div className="sp-row">
+                        <label className="sp-label" htmlFor="idx-gemini-model">Gemini model</label>
+                        <select id="idx-gemini-model" className="sp-select" value={ai.indexGeminiModel || 'gemini-1.5-flash'}
+                          onChange={e => applyAi({ indexGeminiModel: e.target.value })}>
+                          <option value="gemini-1.5-flash">gemini-1.5-flash ★ (fast, cheap)</option>
+                          <option value="gemini-1.5-pro">gemini-1.5-pro (best quality)</option>
+                          <option value="gemini-2.0-flash">gemini-2.0-flash (latest)</option>
+                        </select>
+                      </div>
+                      <div className="sp-hint">
+                        Uses your <strong>GOOGLE_API_KEY</strong> from API Keys tab. No GPU or Ollama needed.
+                      </div>
+                    </>)}
 
                     <div className="sp-row">
                       <label className="sp-label" htmlFor="set-interval">Frame interval</label>
@@ -612,9 +641,11 @@ export default function SettingsPanel({ onClose }: Props) {
                     <div className="sp-row">
                       <label className="sp-label">Est. speed</label>
                       <span className="sp-badge sp-badge--info">
-                        {ai.visionModel.startsWith('moondream')
-                          ? `~${Math.round(ai.frameInterval * 2)}s per minute of video`
-                          : `~${Math.round(ai.frameInterval * 9)}s per minute of video`}
+                        {(ai.indexProvider || 'ollama') === 'gemini'
+                          ? `~${Math.round(ai.frameInterval * 3)}s per minute of video (API)`
+                          : ai.visionModel.startsWith('moondream')
+                            ? `~${Math.round(ai.frameInterval * 2)}s per minute of video`
+                            : `~${Math.round(ai.frameInterval * 9)}s per minute of video`}
                       </span>
                     </div>
 

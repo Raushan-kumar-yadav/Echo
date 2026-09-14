@@ -581,6 +581,8 @@ class AiSettingsPayload(BaseModel):
     whisperBackend: str | None = None
     whisperModel: str | None = None
     maxConcurrentIndex: int | None = None
+    indexProvider: str | None = None      # 'ollama' | 'gemini'
+    indexGeminiModel: str | None = None   # e.g. 'gemini-1.5-flash'
 
 
 def _get_ai_settings() -> dict:
@@ -602,6 +604,8 @@ def _get_ai_settings() -> dict:
         "maxConcurrentIndex": _cfg.get("ai.max_concurrent_index", 2),
         "availableModels": available,
         "indexQueue": queue_info,
+        "indexProvider": _cfg.get("ai.index_provider", "ollama"),
+        "indexGeminiModel": _cfg.get("ai.index_gemini_model", "gemini-1.5-flash"),
     }
 
 
@@ -627,6 +631,10 @@ def postAiSettings(payload: AiSettingsPayload):
         _cfg.set("ai.max_concurrent_index", val)
         from backend.worker.worker_bus import bus as _bus
         _bus.set_max_concurrent_index(val)
+    if payload.indexProvider is not None and payload.indexProvider in ("ollama", "gemini"):
+        _cfg.set("ai.index_provider", payload.indexProvider)
+    if payload.indexGeminiModel is not None:
+        _cfg.set("ai.index_gemini_model", payload.indexGeminiModel.strip())
     return _get_ai_settings()
 # Generator Settings  
 
