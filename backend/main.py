@@ -8,6 +8,30 @@ os.environ.setdefault("OMP_NUM_THREADS", "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 os.environ.setdefault("NUMEXPR_NUM_THREADS", "1")
 
+# ── Load saved .env at startup ─────────────────────────────────────────────────
+# ECHO_RESOURCES_PATH is set by Electron before spawning the backend process.
+# Without this, saved settings (AI provider, API keys) are lost on every restart
+# because os.environ only has the default system environment.
+def _load_saved_env() -> None:
+    try:
+        from dotenv import load_dotenv
+        resources = os.environ.get("ECHO_RESOURCES_PATH", "")
+        if resources:
+            _env_path = Path(resources) / ".env"
+        else:
+            # Dev mode: repo root is two levels up from backend/main.py
+            _env_path = Path(__file__).resolve().parent.parent / ".env"
+        if _env_path.exists():
+            load_dotenv(str(_env_path), override=True)
+            print(f"[Startup] Loaded .env from: {_env_path}", flush=True)
+        else:
+            print(f"[Startup] No .env found at: {_env_path}", flush=True)
+    except Exception as e:
+        print(f"[Startup] Could not load .env: {e}", flush=True)
+
+_load_saved_env()
+
+
 import sys as _sys_early
 
 # ── Resolve project/resource root (works in dev AND PyInstaller frozen bundle) ──
