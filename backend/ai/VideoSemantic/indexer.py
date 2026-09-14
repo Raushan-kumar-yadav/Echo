@@ -1,45 +1,67 @@
 import chromadb
+import hashlib
+import math
 from pathlib import Path
 
-# ── Embedding strategy ─────────────────────────────────────────────────────────
-# Tier 1: sentence_transformers (best quality, requires torch — may be absent in
-#         packaged builds).
-# Tier 2: chromadb's built-in ONNX embedder (downloads ~23 MB model once to
-#         ~/.cache/chroma/).  Works in any environment, no torch dependency.
-# We NEVER skip indexing just because sentence_transformers is unavailable.
+# ── Embedding strategy ──────────────────────────────────────────────────────────
+# Tier 1: sentence_transformers (best quality, requires torch).
+# Tier 2: Pure-Python hash-bag-of-words embedding — zero downloads, zero extra
+#          dependencies, works in PyInstaller on any machine offline.
+#          Quality: keyword-level (searches "iphone" finds "iphone" segments).
+#          Dimension = 384 cosine, same as Tier-1 so collections are compatible.
+# IMPORTANT: we ALWAYS provide explicit embeddings to chromadb so it never
+# tries to auto-embed (which would trigger a ~23 MB S3 download and crash the
+# sandboxed worker process).
 
 try:
     from sentence_transformers import SentenceTransformer as _ST
     _embedder = _ST("all-MiniLM-L6-v2")
-    print("[indexer] Using sentence_transformers embedder", flush=True)
+    print("[indexer] Using sentence_transformers embedder (Tier 1)", flush=True)
 except Exception as _e:
-    print(f"[indexer] sentence_transformers unavailable ({_e}) — chromadb ONNX embedder will be used", flush=True)
+    print(f"[indexer] sentence_transformers unavailable ({_e}) — using hash-bag-of-words fallback", flush=True)
     _embedder = None
 
+_EMBED_DIM = 384
 
-def _encode(texts: list[str]) -> list | None:
-    """Return embeddings list or None (let chromadb embed automatically)."""
+
+def _simple_embed(texts: list[str]) -> list[list[float]]:
+    """
+    Pure-Python keyword embedding.  Maps each unique word to a bucket in a
+    384-dimensional vector via MD5, accumulates TF weights, then L2-normalises.
+    No external dependencies, no network, deterministic and consistent.
+    """
+    result: list[list[float]] = []
+    for text in texts:
+        vec = [0.0] * _EMBED_DIM
+        words = text.lower().split()
+        for word in words:
+            # Two independent hash functions to reduce collisions
+            h1 = int(hashlib.md5(word.encode()).hexdigest(), 16) % _EMBED_DIM
+            h2 = int(hashlib.sha1(word.encode()).hexdigest(), 16) % _EMBED_DIM
+            vec[h1] += 1.0
+            vec[h2] += 0.5
+        magnitude = math.sqrt(sum(v * v for v in vec)) or 1.0
+        result.append([v / magnitude for v in vec])
+    return result
+
+
+def _encode(texts: list[str]) -> list[list[float]]:
+    """Always returns an explicit embeddings list — never None."""
     if _embedder is not None:
         return _embedder.encode(texts).tolist()
-    return None   # chromadb auto-embeds on upsert / query_texts on query
+    return _simple_embed(texts)
 
 
 def _upsert(col, ids: list[str], documents: list[str], metadatas: list[dict]) -> None:
-    """Upsert into *col* using pre-computed embeddings when available."""
+    """Upsert into *col* with explicit embeddings (never triggers chromadb auto-embed)."""
     embs = _encode(documents)
-    if embs is not None:
-        col.upsert(ids=ids, embeddings=embs, documents=documents, metadatas=metadatas)
-    else:
-        col.upsert(ids=ids, documents=documents, metadatas=metadatas)
+    col.upsert(ids=ids, embeddings=embs, documents=documents, metadatas=metadatas)
 
 
 def _query(col, query: str, n_results: int) -> dict:
-    """Query *col* with semantic search, using chromadb fallback when needed."""
-    if _embedder is not None:
-        q_emb = _embedder.encode([query]).tolist()
-        return col.query(query_embeddings=q_emb, n_results=n_results)
-    else:
-        return col.query(query_texts=[query], n_results=n_results)
+    """Semantic/keyword search using explicit query embedding."""
+    q_emb = _encode([query])
+    return col.query(query_embeddings=q_emb, n_results=n_results)
 
 
 # Scratch DB — used when no project is saved yet
