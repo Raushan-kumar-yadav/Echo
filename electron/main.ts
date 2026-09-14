@@ -57,13 +57,16 @@ function tryRevealMain() {
   }
 }
 
-// Dev log window  
+// Dev log window — available in ALL builds for debugging
 function createDevLogWindow(): void {
-  if (!isDev) return
+  if (devLogWindow && !devLogWindow.isDestroyed()) {
+    devLogWindow.focus()
+    return
+  }
   devLogWindow = new BrowserWindow({
-    width: 680,
+    width: 720,
     height: 700,
-    title: 'Echo — Dev Log',
+    title: 'Echo — Backend Logs',
     frame: false,
     backgroundColor: '#0d0d0f',
     webPreferences: {
@@ -72,8 +75,12 @@ function createDevLogWindow(): void {
       preload: path.join(__dirname, 'preload.js'),
     },
   })
-  devLogWindow.loadFile(path.join(__dirname, 'devlog.html'))
+  const logPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'app', 'dist-electron', 'devlog.html')
+    : path.join(__dirname, 'devlog.html')
+  devLogWindow.loadFile(logPath)
   devLogWindow.on('closed', () => { devLogWindow = null })
+  devLogWindow.once('ready-to-show', () => devLogWindow?.show())
 }
 
 function sendDevLog(type: 'py' | 'sys', text: string) {
@@ -426,6 +433,13 @@ ipcMain.on('window:maximize', () => {
   mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow?.maximize()
 })
 ipcMain.on('window:close', () => mainWindow?.close())
+ipcMain.on('devlog:toggle', () => {
+  if (devLogWindow && !devLogWindow.isDestroyed()) {
+    devLogWindow.close()
+  } else {
+    createDevLogWindow()
+  }
+})
 
 ipcMain.handle('backend:get-port', () => detectedPort)
 
@@ -1050,10 +1064,14 @@ app.whenReady().then(() => {
   sendSplash('Creating main window…', 20)
   createWindow()
 
+  // Dev log — auto-show in dev, available via Ctrl+Shift+L in production
+  createDevLogWindow()
   if (isDev) {
-    createDevLogWindow()
     sendDevLog('sys', 'Echo dev mode started')
     sendDevLog('sys', 'Waiting for Python backend…')
+  } else {
+    sendDevLog('sys', 'Echo production build started')
+    sendDevLog('sys', 'Press Ctrl+Shift+L to toggle this log window')
   }
 
   sendSplash('Starting Python backend…', 30)

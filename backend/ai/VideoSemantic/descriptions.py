@@ -1,6 +1,7 @@
 import os
 import base64
 import re
+import concurrent.futures
 from pathlib import Path
 
 
@@ -16,7 +17,7 @@ VISION_PROMPT = (
 )
 
 
-# ── Provider resolution ────────────────────────────────────────────────────────
+#   Provider resolution  
 
 def _get_provider_config() -> tuple[str, str, str]:
     """
@@ -62,27 +63,52 @@ def _get_model(override: str | None = None) -> str:
     return override or model
 
 
-# ── Frame description ──────────────────────────────────────────────────────────
+#   Frame description  
 
 def _describe_frame_ollama(frame_path: str, model: str) -> str:
-    """Describe a frame using Ollama vision model (30 s timeout)."""
+    """
+    Describe a frame using Ollama vision model.
+    Uses a wall-clock timeout (120 s) via concurrent.futures so that model-
+    loading time (~45-90 s for 1.7 GB models) doesn't silently block forever.
+    The per-read httpx timeout alone is insufficient because Ollama streams
+    partial tokens — the timer resets on each chunk, but during model loading
+    NO tokens are sent, so the httpx timeout never fires.
+    """
     import ollama, httpx
+    host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+
     with open(frame_path, "rb") as f:
         img_b64 = base64.b64encode(f.read()).decode()
 
-    host   = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-    client = ollama.Client(host=host, timeout=httpx.Timeout(30.0, connect=5.0))
-    response = client.chat(
-        model=model,
-        messages=[{
-            "role": "user",
-            "content": VISION_PROMPT,
-            "images": [img_b64],
-        }],
-    )
-    msg     = response.message if hasattr(response, "message") else response["message"]
-    content = msg.content if hasattr(msg, "content") else msg["content"]
-    return content.strip()
+    def _call() -> str:
+        client = ollama.Client(host=host, timeout=httpx.Timeout(120.0, connect=5.0))
+        response = client.chat(
+            model=model,
+            messages=[{
+                "role":    "user",
+                "content": VISION_PROMPT,
+                "images":  [img_b64],
+            }],
+        )
+        msg     = response.message if hasattr(response, "message") else response["message"]
+        content = msg.content if hasattr(msg, "content") else msg["content"]
+        return content.strip()
+
+     
+    _frame_name = Path(frame_path).name
+    print(f"[VideoSemantic] Describing {_frame_name} via {host} model={model}…", flush=True)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as _pool:
+        _fut = _pool.submit(_call)
+        try:
+            result = _fut.result(timeout=120)
+            print(f"[VideoSemantic] {_frame_name} → {result[:80]!r}", flush=True)
+            return result
+        except concurrent.futures.TimeoutError:
+            print(f"[VideoSemantic] TIMEOUT 120 s for {_frame_name} — skipping frame", flush=True)
+            return ""
+        except Exception as _e:
+            print(f"[VideoSemantic] ERROR describing {_frame_name}: {_e}", flush=True)
+            return ""
 
 
 def _describe_frame_gemini(frame_path: str, model: str, api_key: str) -> str:
@@ -123,7 +149,7 @@ def describe_frame(
     return _describe_frame_ollama(frame_path, model)
 
 
-# ── Batch describe (used by old code paths) ────────────────────────────────────
+#    Batch describe  
 
 def describe_all_frames(
     frames_dir: str,

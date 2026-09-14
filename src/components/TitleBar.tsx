@@ -1,4 +1,4 @@
-﻿import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import type { ActiveTool } from '../context/toolContext';
 import WorkerProgress from '../workspaces/worker/WorkerProgress';
 import { saveProject, saveProjectTo, loadProject, newProject } from '../api/projectApi';
@@ -9,6 +9,7 @@ interface ElectronAPI {
   minimize: () => void;
   maximize: () => void;
   close: () => void;
+  send?: (channel: string, ...args: any[]) => void;
 }
 
 declare global {
@@ -205,7 +206,21 @@ export default function TitleBar({
     { label: 'Quit', shortcut: 'Alt+F4',       action: () => api?.close() },
   ];
 
- 
+  const toggleDevLog = useCallback(() => {
+    (window as any).electronAPI?.send?.('devlog:toggle');
+  }, []);
+
+   
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.shiftKey && e.key === 'L') {
+        e.preventDefault();
+        toggleDevLog();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [toggleDevLog]);
 
   const editItems: MenuItem[] = [
     { label: 'Undo', shortcut: 'Ctrl+Z', action: () => {} },
@@ -219,6 +234,12 @@ export default function TitleBar({
     { label: 'Delete Clip', shortcut: 'Del',    action: () => {} },
   ];
 
+  const settingsItems: MenuItem[] = [
+    { label: 'Settings', action: onSettings },
+    { sep: true },
+    { label: 'Backend Logs', shortcut: 'Ctrl+⇧L', action: toggleDevLog },
+  ];
+
   return (
     <div className="titlebar">
  
@@ -228,9 +249,9 @@ export default function TitleBar({
           <span>ECHO</span>
         </div>
         <div className="titlebar__menus">
-          <MenuButton label="File"  items={fileItems} />
-          <MenuButton label="Edit"  items={editItems} />
-          <button className="tb-menu__btn" onClick={onSettings}>Settings</button>
+          <MenuButton label="File"     items={fileItems} />
+          <MenuButton label="Edit"     items={editItems} />
+          <MenuButton label="Settings" items={settingsItems} />
         </div>
 
   
