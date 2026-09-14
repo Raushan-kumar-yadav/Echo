@@ -157,6 +157,8 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
         print(f"[SandboxWorker] Phase 1: vision — {total_frames} frames, provider={prov} model={mdl}", flush=True)
 
         scenes: list[dict] = []
+        BATCH_SAVE_EVERY = 5   # upsert to ChromaDB after every N described frames
+
         for i, fname in enumerate(frame_files):
             if _is_cancelled():
                 raise _IndexCancelled(f"Cancelled at frame {i}/{total_frames}")
@@ -172,6 +174,22 @@ def _do_index_video(asset_id: str, filepath: str, port: int,
                 desc = ""
             if desc:
                 scenes.append({"text": desc, "start": ts, "end": ts + frame_interval})
+
+            # ── Streaming batch-save ────────────────────────────────────────
+            # Upsert every BATCH_SAVE_EVERY successfully described frames so
+            # the AI agent can search partial results during long indexing jobs
+            # (e.g. 30-min video = 300 frames = 10-15 min to describe).
+            # Each call overwrites the previous batch IDs (sequential from 0)
+            # so there are no duplicates — only fresh, consistent data.
+            if scenes and len(scenes) % BATCH_SAVE_EVERY == 0:
+                _partial = merge_and_chunk(scenes, [], window_sec=4.0)
+                index_video(asset_id, _partial)
+                print(
+                    f"[SandboxWorker] 🔍 Batch saved {len(_partial)} chunks "
+                    f"({len(scenes)}/{total_frames} frames indexed — searchable now!)",
+                    flush=True,
+                )
+
             # Per-frame progress (10% → 80%)
             if result_queue is not None:
                 try:
