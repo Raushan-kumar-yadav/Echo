@@ -352,6 +352,9 @@ def _findFreePort(start: int = 8000, end: int = 8010) -> int:
 
 
 if __name__ == "__main__":
+    import multiprocessing as _mp
+    _mp.freeze_support()  # Required for PyInstaller: must be first line in __main__
+
     port = _findFreePort()
     os.environ["BACKEND_PORT"] = str(port)
     print(f"[Echo] Backend starting on port {port}", flush=True)

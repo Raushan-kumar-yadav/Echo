@@ -29,14 +29,18 @@ class WorkerBus:
         if self._process and self._process.is_alive():
             return  # already running
 
-        import sys, os
-        parent_syspath = sys.path[:]    
+        import sys
+        parent_syspath = sys.path[:]
 
-       
-        if sys.platform == "win32" and getattr(sys, "executable", "").lower().endswith(".exe"):
-            python_exe = os.path.join(sys.exec_prefix, "python.exe")
-            if os.path.exists(python_exe) and sys.executable.lower() != python_exe.lower():
-                multiprocessing.set_executable(python_exe)
+        if getattr(sys, "frozen", False):
+            # Packaged exe (PyInstaller): sys.executable is the frozen app itself.
+            # multiprocessing must use it so the child re-enters the frozen bootloader.
+            multiprocessing.set_executable(sys.executable)
+            multiprocessing.freeze_support()
+        # Dev (venv): sys.executable is already the venv python.exe — no action needed.
+        # Do NOT call set_executable() in dev: pointing it at sys.exec_prefix/python.exe
+        # can resolve to the system Python instead of the venv, causing WinError 5
+        # (Access Denied) on DuplicateHandle during spawn.
 
         self._running = True
         ctx = multiprocessing.get_context("spawn")

@@ -154,11 +154,30 @@ function startPython(): void {
     },
   })
 
+  let _pendingPort: number | null = null  // HTTP port detected, waiting for TCP
+
   pyProcess.stdout?.on('data', (d: Buffer) => {
     const line = d.toString().trim()
     console.log('[PY]', line)
-    const m = line.match(/starting on port (\d+)/)
-    if (m) sendPort(parseInt(m[1], 10))
+
+     
+    const portMatch = line.match(/starting on port (\d+)/)
+    if (portMatch) {
+      const port = parseInt(portMatch[1], 10)
+      detectedPort = port
+      _pendingPort = port
+       
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('backend:port', port)
+      }
+    }
+
+    // init cpp 
+ 
+    if (_pendingPort && line.includes('Frame server listening')) {
+      initRenderEngine(_pendingPort)
+      _pendingPort = null
+    }
   })
 
   pyProcess.stderr?.on('data', (d: Buffer) => {
