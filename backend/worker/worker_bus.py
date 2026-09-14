@@ -15,7 +15,7 @@ class WorkerBus:
     def __init__(self) -> None:
         self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()  # carries asset_ids to cancel
+        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()   
         self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
@@ -203,12 +203,7 @@ class WorkerBus:
         })
 
     def cancel_index(self, asset_id: str) -> None:
-        """Signal the sandbox worker to stop indexing a specific asset.
-
-        Works for both queued (not started yet) and actively running jobs:
-        - Marks index_cache as 'cancelled' so the pending-check at job start fires.
-        - Sends asset_id through the cancel queue so the running frame loop exits early.
-        """
+         
         from backend.worker import index_cache
         index_cache.set_cancelled(asset_id)
         try:
@@ -418,5 +413,4 @@ class WorkerBus:
         print(f"[WorkerBus] check_and_resume: {queued_vision} vision + {queued_transcript} transcript + {queued_audio} audio jobs queued", flush=True)
 
 
-# Global singleton
 bus = WorkerBus()
