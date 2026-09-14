@@ -375,12 +375,35 @@ export default function SettingsPanel({ onClose }: Props) {
     setSaving(false);
   }, []);
 
+  const [agentToast, setAgentToast] = React.useState<string | null>(null);
+
+  const restartAgent = React.useCallback(async () => {
+    const port = getPort();
+    if (!port) return;
+    try {
+      const r = await fetch(`http://127.0.0.1:${port}/ai/restart`, { method: 'POST' });
+      const j = await r.json();
+      if (j.ok) {
+        setAgentToast(`✅ Agent restarted → ${j.provider}`);
+      } else {
+        setAgentToast(`❌ ${j.message}`);
+      }
+    } catch {
+      setAgentToast('❌ Could not reach backend');
+    }
+    setTimeout(() => setAgentToast(null), 3000);
+  }, []);
+
   const applyEnv = useCallback(async (key: string, value: string) => {
     setSaving(true);
     const next = await postEnvSettings({ [key]: value });
     if (next) setEnv(next);
     setSaving(false);
-  }, []);
+    // Auto-restart agent when provider or model changes so it takes effect immediately
+    if (key === 'ECHO_AI_PROVIDER' || key === 'ECHO_AI_MODEL') {
+      await restartAgent();
+    }
+  }, [restartAgent]);
 
   return (
     <div className="sp-overlay" ref={overlayRef}
@@ -402,6 +425,20 @@ export default function SettingsPanel({ onClose }: Props) {
         <div className="sp-rz sp-rz--sw" onMouseDown={startResize('sw')} />
         <div className="sp-rz sp-rz--ne" onMouseDown={startResize('ne')} />
         <div className="sp-rz sp-rz--nw" onMouseDown={startResize('nw')} />
+
+        {/* Agent restart toast */}
+        {agentToast && (
+          <div style={{
+            position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+            background: agentToast.startsWith('✅') ? '#1a3a2a' : '#3a1a1a',
+            border: `1px solid ${agentToast.startsWith('✅') ? '#00d4aa' : '#ff6b6b'}`,
+            color: '#fff', padding: '6px 16px', borderRadius: 8, fontSize: 12,
+            zIndex: 999, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+            pointerEvents: 'none',
+          }}>
+            {agentToast}
+          </div>
+        )}
 
         {/* Header */}
         <div className="sp-header">
@@ -864,28 +901,13 @@ export default function SettingsPanel({ onClose }: Props) {
                     <div style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
                       <button
                         id="agent-restart-btn"
-                        className="sp-btn sp-btn--primary"
                         style={{ background: 'linear-gradient(135deg,#6c63ff,#00d4aa)', color: '#fff', fontWeight: 600, padding: '8px 20px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13 }}
-                        onClick={async () => {
-                          const port = getPort();
-                          if (!port) return;
-                          try {
-                            const r = await fetch(`http://127.0.0.1:${port}/ai/restart`, { method: 'POST' });
-                            const j = await r.json();
-                            if (j.ok) {
-                              alert(`✅ Agent restarted with provider: ${j.provider}\nNext message will use the new settings.`);
-                            } else {
-                              alert(`❌ Restart failed: ${j.message}`);
-                            }
-                          } catch (err) {
-                            alert('Failed to reach backend.');
-                          }
-                        }}
+                        onClick={restartAgent}
                       >
                         🔄 Restart Agent
                       </button>
                       <span className="sp-hint" style={{ margin: 0, fontSize: 11 }}>
-                        Applies new provider/key/model without restarting the app.
+                        Use after entering a new API key. Provider/model changes auto-restart.
                       </span>
                     </div>
                   </>
