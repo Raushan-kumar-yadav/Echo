@@ -182,13 +182,13 @@ def move_clip(clip_id: str, new_start_frame: int, track_index: int) -> str:
 
     HOW TO GET track_index:
       Call get_timeline_state() first. The tracks array is 0-indexed.
-      RENDER ORDER (compositor paints ascending, Skia rule: last painted = on top):
-        tracks[0]            -> drawn FIRST  -> BOTTOM layer (background, behind everything)
-        tracks[1]            -> drawn second -> above track 0
-        tracks[last/highest] -> drawn LAST   -> TOP layer (foreground, in front of everything)
+      RENDER ORDER (compositor iterates tracks in REVERSE, Skia rule: last painted = on top):
+        tracks[0]            -> drawn LAST   -> TOP layer (foreground, in front of everything)
+        tracks[1]            -> drawn second-to-last -> below track 0
+        tracks[last/highest] -> drawn FIRST  -> BOTTOM layer (background, behind everything)
       UI TIMELINE PANEL (rows match index directly — NO reversal):
-        TOP ROW    of the panel = tracks[0]    = visual BOTTOM (background)
-        BOTTOM ROW of the panel = tracks[last] = visual TOP    (foreground/overlay)
+        TOP ROW    of the panel = tracks[0]    = visual TOP (foreground/overlay)
+        BOTTOM ROW of the panel = tracks[last] = visual BOTTOM (background)
       Read the trackId of the target track, count its position in the array.
 
     HOW TO MOVE ACROSS TRACKS (e.g. video clip from track 1 to track 2):
@@ -747,24 +747,24 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
     ALWAYS call this before placing any text, title, shape, or overlay clip.
 
     HOW THE COMPOSITOR WORKS — CRITICAL:
-    The renderer iterates timeline.tracks in INDEX ORDER (0, 1, 2 ...) and
+    The renderer iterates timeline.tracks in REVERSE ORDER (last, ..., 1, 0) and
     paints each track onto a Skia canvas sequentially.
     Skia rule: the LAST thing painted appears ON TOP.
 
-      tracks[0]            -> drawn FIRST  -> BOTTOM of visual stack (background, behind)
-      tracks[1]            -> drawn second -> above track 0
-      tracks[last/highest] -> drawn LAST   -> TOP of visual stack (foreground / overlay)
+      tracks[last/highest] -> drawn FIRST  -> BOTTOM of visual stack (background, behind)
+      tracks[1]            -> drawn second-to-last -> above tracks[last]
+      tracks[0]            -> drawn LAST   -> TOP of visual stack (foreground / overlay)
 
     UI TIMELINE PANEL — rows match index order directly (NO reversal):
-      TOP ROW    in the timeline panel = tracks[0]    = visual BOTTOM (background)
-      BOTTOM ROW in the timeline panel = tracks[last] = visual TOP    (foreground/overlay)
+      TOP ROW    in the timeline panel = tracks[0]    = visual TOP (foreground/overlay)
+      BOTTOM ROW in the timeline panel = tracks[last] = visual BOTTOM (background)
 
     NOTE: When a user says "top track" they usually mean the TOP ROW of the panel,
-    which is tracks[0] — but this is the visual BOTTOM (behind video).
+    which is tracks[0] — and this IS the visual TOP (foreground/overlay).
 
     So to put text or an overlay ABOVE a video clip:
-      * video should be on a LOW-index track  (e.g. 0)
-      * overlay must be on a HIGH-index track (e.g. 1, 2, 3 ...)
+      * video should be on a HIGH-index track  (e.g. 1, 2, 3 ...)
+      * overlay must be on a LOW-index track (e.g. 0)
 
     Args:
         start_frame: First frame of the range you are about to place a clip into.
@@ -809,32 +809,33 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
  
 
     if not occupied:
-        
-        last_i, last_t = video_tracks[-1]
+        # No clips at all — use the first (lowest) video track = renders on top
+        first_i, first_t = video_tracks[0]
         reason = (
             f"No clips in frames {start_frame}-{end_frame}. "
-            f"Using track {last_i} (highest existing video track = renders on top)."
+            f"Using track {first_i} (lowest index = renders on top)."
         )
         return json.dumps({
-            "track_index": last_i,
-            "track_id": last_t.get("trackId"),
+            "track_index": first_i,
+            "track_id": first_t.get("trackId"),
             "created": False,
             "reason": reason,
         }, indent=2)
 
-    max_occupied = max(occupied)
+    min_occupied = min(occupied)
 
-    # Look for an existing free video track  
+    # Look for an existing free video track with index LOWER than the lowest occupied
+    # (lower index = rendered on top = overlay appears in front)
     best_i, best_t = None, None
     for i, t in video_tracks:
-        if i > max_occupied and i not in occupied:
+        if i < min_occupied and i not in occupied:
             best_i, best_t = i, t
-            break   # take the first  
+            break   # take the first free track above (visually) the video
 
     if best_i is not None:
         reason = (
-            f"Track {best_i} is free and its index ({best_i}) > highest occupied ({max_occupied}) "
-            f"-> drawn after all video -> renders ON TOP."
+            f"Track {best_i} is free and its index ({best_i}) < lowest occupied ({min_occupied}) "
+            f"-> drawn AFTER all video (reversed iteration) -> renders ON TOP."
         )
         return json.dumps({
             "track_index": best_i,
@@ -843,16 +844,15 @@ def find_free_overlay_track(start_frame: int, end_frame: int) -> str:
             "reason": reason,
         }, indent=2)
 
-    # No free track above the video  
-    new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay"})
+    # No free track above the video — create a new track at index 0 (top)
+    new_track = _post("/timeline/add-track", {"type": "video", "name": "Overlay", "index": 0})
     new_track_id = new_track.get("trackId")
-    new_index = len(tracks)    
     reason = (
-        f"All tracks at index > {max_occupied} are occupied or don't exist. "
-        f"Created new Overlay track at index {new_index} (highest = renders ON TOP)."
+        f"All tracks at index < {min_occupied} are occupied or don't exist. "
+        f"Created new Overlay track at index 0 (lowest = renders ON TOP)."
     )
     return json.dumps({
-        "track_index": new_index,
+        "track_index": 0,
         "track_id": new_track_id,
         "created": True,
         "reason": reason,

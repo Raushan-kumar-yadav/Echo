@@ -16,7 +16,7 @@ class WorkerBus:
     def __init__(self) -> None:
         self._job_queue: multiprocessing.Queue = multiprocessing.Queue()
         self._result_queue: multiprocessing.Queue = multiprocessing.Queue()
-        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()  # carries asset_ids to cancel
+        self._cancel_queue: multiprocessing.Queue = multiprocessing.Queue()   
         self._process:  Optional[multiprocessing.Process] = None
         self._drain_thread: Optional[threading.Thread] = None
         self._running = False
@@ -26,7 +26,7 @@ class WorkerBus:
         )
         self._watchdog_thread: Optional[threading.Thread] = None
 
-        # ── Concurrent indexing limiter ──────────────────────────────────
+        #   Concurrent indexing limiter  
         self._index_lock = threading.Lock()
         self._active_index_ids: set[str] = set()      # asset IDs currently being indexed
         self._index_waiting: deque[dict] = deque()     # jobs waiting for a slot
@@ -151,7 +151,7 @@ class WorkerBus:
             print(f"[WorkerBus] waveform error: {asset_id[:8]}: {msg}", flush=True)
             traceback.print_exc()
 
-    # ── Concurrent indexing gate ──────────────────────────────────────
+    #   Concurrent indexing gate  
 
     def set_max_concurrent_index(self, n: int) -> None:
         """Update the concurrent indexing limit (called from settings API)."""

@@ -44,6 +44,7 @@ class SplitClipRequest(BaseModel):
 class AddTrackRequest(BaseModel):
     type: str = "video"   # "video" | "audio"
     name: str = ""
+    index: int | None = None  # insert position (None = append)
 
 
 @router.post("/timeline/add-track")
@@ -59,7 +60,10 @@ def addTrack(req: AddTrackRequest):
     else:
         name = req.name or f"Video {len(tl.tracks) + 1}"
         track = VideoTrack(name=name)
-    tl.addTrack(track)
+    if req.index is not None and 0 <= req.index <= len(tl.tracks):
+        tl.tracks.insert(req.index, track)
+    else:
+        tl.addTrack(track)
     from backend.events import notify; notify("timeline")
     return {"trackId": track.trackId, "name": track.name, "type": req.type}
 
