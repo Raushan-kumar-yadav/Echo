@@ -61,6 +61,13 @@ a = Analysis(
          'chromadb/migrations'),
         (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb' / 'utils' / 'embedding_functions' / 'schemas'),
          'chromadb/utils/embedding_functions/schemas'),
+        # chromadb 1.5+ loads its backend via importlib.import_module() (dynamic import).
+        # PyInstaller's static analysis misses chromadb.api.rust, chromadb.api.segment,
+        # chromadb.segment.*, chromadb.db.*, chromadb.telemetry.* etc.
+        # Bundling the whole package as data ensures filesystem fallback resolves them.
+        # CHROMA_API_IMPL env var (in .env) forces the pure-Python segment backend
+        # (avoids chromadb_rust_bindings.pyd which is not installed).
+        (str(ROOT / '.venv' / 'Lib' / 'site-packages' / 'chromadb'), 'chromadb'),
     ] + _metadata_datas,
     hiddenimports=[
         'uvicorn.lifespan.on',
@@ -103,9 +110,18 @@ a = Analysis(
         'langgraph.graph',
         'langgraph.prebuilt',
         'chromadb',
+        'chromadb.telemetry.product.posthog',
+        'chromadb.telemetry.product',
+        'chromadb.telemetry',
         'av',
         'aiofiles',
         'dotenv',
+        # VideoSemantic modules are lazy-imported inside worker functions;
+        # static analysis misses them — pin them here so the archive always
+        # has the latest compiled version.
+        'backend.ai.VideoSemantic.indexer',
+        'backend.ai.VideoSemantic.descriptions',
+        'backend.ai.VideoSemantic.searcher',
     ],
     hookspath=[],
     runtime_hooks=[],
