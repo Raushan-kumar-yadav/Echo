@@ -88,37 +88,59 @@ export default function ViewportWidget() {
   useWebCompSync();
 
  
-  useEffect(() => {
+  // Try to detect native render engine (may already be ready or may come later)
+  const initNativeRender = useCallback(async () => {
     const api = (window as any).electronAPI;
     if (!api?.isNativeRender) return;
-    api.isNativeRender().then(async (isNative: boolean) => {
-      if (!isNative) return;
-      setIsNativeRender(true);
-      const buf = await api.getRenderBuffer();
-      if (buf) nativeBufferRef.current = buf;
-      const stats = await api.getRenderStats();
-      if (stats) {
-        nativeWidthRef.current  = stats.width;
-        nativeHeightRef.current = stats.height;
- 
-        setNativeDims({ w: stats.width, h: stats.height });
-      }
-    });
+    const isNative = await api.isNativeRender();
+    console.log('[ViewportWidget] isNativeRender:', isNative);
+    if (!isNative) return;
+    setIsNativeRender(true);
+    const buf = await api.getRenderBuffer();
+    console.log('[ViewportWidget] getRenderBuffer:', buf ? `ArrayBuffer(${buf.byteLength})` : 'null');
+    if (buf) nativeBufferRef.current = buf;
+    const stats = await api.getRenderStats();
+    console.log('[ViewportWidget] getRenderStats:', stats);
+    if (stats) {
+      nativeWidthRef.current  = stats.width;
+      nativeHeightRef.current = stats.height;
+      setNativeDims({ w: stats.width, h: stats.height });
+    }
   }, []);
+
+  // Check on mount
+  useEffect(() => { initNativeRender(); }, [initNativeRender]);
+
+  // Also check when engine becomes ready (deferred init)
+  useEffect(() => {
+    const api = (window as any).electronAPI;
+    if (!api?.onEngineReady) return;
+    const cleanup = api.onEngineReady(() => {
+      initNativeRender();
+    });
+    return cleanup;
+  }, [initNativeRender]);
 
  
   useEffect(() => {
     if (!isNativeRender) return;
     const api = (window as any).electronAPI;
     if (!api?.onFrameReady) return;
-
-    const cleanup = api.onFrameReady((frameNum: number) => {
+    let _frameDbg = 0;
+    const cleanup = api.onFrameReady(async (frameNum: number) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
-      // Use the already-cached SharedArrayBuffer  
-      const buf = nativeBufferRef.current;
+      // Fetch a fresh copy of the pixel buffer from the main process each frame.
+      // Electron IPC always serializes (structured clone), so the renderer process
+      // cannot hold a live pointer to the C++ buffer — we must re-fetch.
+      const buf = await api.getRenderBuffer();
       if (!buf) return;
+
+      if (_frameDbg < 3) {
+        _frameDbg++;
+        console.log(`[ViewportWidget] onFrameReady #${_frameDbg} frame=${frameNum} bufSize=${buf.byteLength}`);
+      }
 
       const w = nativeWidthRef.current;
       const h = nativeHeightRef.current;

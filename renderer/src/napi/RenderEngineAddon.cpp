@@ -212,8 +212,11 @@ Napi::Value GetSharedBuffer(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   if (!g_compositor)
     return env.Null();
-  return Napi::Buffer<uint8_t>::Copy(env, g_compositor->getBuffer(),
-                                     g_compositor->getBufferSize());
+  // Zero-copy: wrap the compositor's internal pixel buffer directly.
+  // JS sees live updates without any memcpy per frame.
+  return Napi::ArrayBuffer::New(env,
+                                g_compositor->getBuffer(),
+                                g_compositor->getBufferSize());
 }
 
 // setFrameReadyCallback

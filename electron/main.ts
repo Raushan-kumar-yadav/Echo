@@ -105,6 +105,11 @@ function initRenderEngine(pythonPort: number, width = 1920, height = 1080, fps =
     renderEngine.initialize(width, height, fps, effectsDir, pythonPort)
     renderEngine.setFrameReadyCallback(viewportFrameReadyCb)
     console.log('[RenderEngine] Initialized — effectsDir:', effectsDir, 'port:', pythonPort)
+    // Notify the frontend that the native render engine is now available
+    // (needed because initRenderEngine is deferred until TCP server is up)
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('render:engine-ready')
+    }
   } catch (e) {
     console.error('[RenderEngine] Initialize error:', e)
     renderEngine = null
