@@ -130,16 +130,17 @@ export class AudioEngine {
   // Playback control  
 
   seek(frame: number) {
+    const ctx = this._getCtx()
+    // Always update the play-clock reference so that play() after a scrub
+    // starts from the correct position even when paused
+    this._playStartCtxTime = ctx.currentTime
+    this._playStartFrame   = frame
     if (this._playing) {
-      // Reposition all active sources
+      // Reposition all active sources immediately
       for (const [, node] of this.nodes) {
         this._stopSource(node)
         this._startSource(node, frame)
       }
-      // Reset play clock reference
-      const ctx = this._getCtx()
-      this._playStartCtxTime = ctx.currentTime
-      this._playStartFrame   = frame
     }
   }
 
@@ -204,10 +205,17 @@ export class AudioEngine {
     }
 
     const src = ctx.createBufferSource()
-    src.buffer          = node.buffer
+    src.buffer             = node.buffer
     src.playbackRate.value = this._rate
     src.connect(node.gainNode)
-    src.start(ctx.currentTime + delayCtxTime, offsetSec)
+
+    // clamp duration to what remains in the clip from the current offset
+    const clipDurSec = (clip.duration - Math.max(0, clipRelFrame)) / (this.fps * this._rate)
+    const bufRemainSec = node.buffer.duration - offsetSec
+    const playDurSec = Math.max(0, Math.min(clipDurSec, bufRemainSec))
+    if (playDurSec <= 0) return
+
+    src.start(ctx.currentTime + delayCtxTime, offsetSec, playDurSec)
     src.onended = () => { if (node.source === src) node.source = null }
     node.source = src
   }
