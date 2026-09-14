@@ -1,13 +1,46 @@
 import chromadb
 from pathlib import Path
 
-# sentence_transformers requires torch which may not be bundled in packaged builds
+# ── Embedding strategy ─────────────────────────────────────────────────────────
+# Tier 1: sentence_transformers (best quality, requires torch — may be absent in
+#         packaged builds).
+# Tier 2: chromadb's built-in ONNX embedder (downloads ~23 MB model once to
+#         ~/.cache/chroma/).  Works in any environment, no torch dependency.
+# We NEVER skip indexing just because sentence_transformers is unavailable.
+
 try:
     from sentence_transformers import SentenceTransformer as _ST
-    _embedder = _ST("all-MiniLM-L6-v2")  # CPU-only, ~80 MB
+    _embedder = _ST("all-MiniLM-L6-v2")
+    print("[indexer] Using sentence_transformers embedder", flush=True)
 except Exception as _e:
-    print(f"[indexer] sentence_transformers unavailable ({_e}) — semantic search disabled", flush=True)
+    print(f"[indexer] sentence_transformers unavailable ({_e}) — chromadb ONNX embedder will be used", flush=True)
     _embedder = None
+
+
+def _encode(texts: list[str]) -> list | None:
+    """Return embeddings list or None (let chromadb embed automatically)."""
+    if _embedder is not None:
+        return _embedder.encode(texts).tolist()
+    return None   # chromadb auto-embeds on upsert / query_texts on query
+
+
+def _upsert(col, ids: list[str], documents: list[str], metadatas: list[dict]) -> None:
+    """Upsert into *col* using pre-computed embeddings when available."""
+    embs = _encode(documents)
+    if embs is not None:
+        col.upsert(ids=ids, embeddings=embs, documents=documents, metadatas=metadatas)
+    else:
+        col.upsert(ids=ids, documents=documents, metadatas=metadatas)
+
+
+def _query(col, query: str, n_results: int) -> dict:
+    """Query *col* with semantic search, using chromadb fallback when needed."""
+    if _embedder is not None:
+        q_emb = _embedder.encode([query]).tolist()
+        return col.query(query_embeddings=q_emb, n_results=n_results)
+    else:
+        return col.query(query_texts=[query], n_results=n_results)
+
 
 # Scratch DB — used when no project is saved yet
 _SCRATCH_DB_PATH = str(Path.home() / ".echo" / "chroma_db")
@@ -66,22 +99,21 @@ def is_asset_indexed(asset_id: str) -> bool:
     return False
 
 
-#   Video indexing  
+#  Video indexing 
 
 def index_video(asset_id: str, chunks: list[dict]) -> int:
     if not chunks:
         print(f"[ChromaDB] No chunks to index for {asset_id[:8]}", flush=True)
         return 0
-    if _embedder is None:
-        print("[ChromaDB] Skipping index_video — embedder not available (torch missing)", flush=True)
+    if _col is None:
+        print("[ChromaDB] Collection not ready — skipping index_video", flush=True)
         return 0
 
     total = len(chunks)
     print(f"[ChromaDB] Saving {total} chunks for asset {asset_id[:8]}…", flush=True)
 
-    texts = [c["text"] for c in chunks]
-    embeddings = _embedder.encode(texts).tolist()
-    ids = [f"{asset_id}__{i}" for i in range(total)]
+    texts     = [c["text"] for c in chunks]
+    ids       = [f"{asset_id}__{i}" for i in range(total)]
     metadatas = [
         {"assetId": asset_id, "start_sec": c["start_sec"], "end_sec": c["end_sec"], "asset_type": "video"}
         for c in chunks
@@ -91,16 +123,17 @@ def index_video(asset_id: str, chunks: list[dict]) -> int:
         preview = doc[:80].replace("\n", " ")
         print(f"[ChromaDB]  [{i+1}/{total}] {meta['start_sec']:.0f}s–{meta['end_sec']:.0f}s → {preview}…", flush=True)
 
-    _col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
-    print(f"[ChromaDB] ✓ {total} chunks saved for {asset_id[:8]}", flush=True)
-    return total
+    try:
+        _upsert(_col, ids, texts, metadatas)
+        print(f"[ChromaDB] ✓ {total} chunks saved for {asset_id[:8]}", flush=True)
+        return total
+    except Exception as e:
+        print(f"[ChromaDB] index_video upsert failed: {e}", flush=True)
+        return 0
 
 
 def get_segments_for_asset(asset_id: str) -> list[dict]:
-    """Return all stored transcript segments for *asset_id* sorted by start time.
-    Returns an empty list if the asset is not indexed yet.
-    Each dict has: start_s, end_s, text.
-    """
+    """Return all stored transcript segments for *asset_id* sorted by start time."""
     if not _col:
         return []
     try:
@@ -111,7 +144,6 @@ def get_segments_for_asset(asset_id: str) -> list[dict]:
         )
         segments = []
         for doc, meta in zip(result["documents"], result["metadatas"]):
-            # Only include text-bearing segments (skip pure vision frame entries)
             if not doc or not doc.strip():
                 continue
             segments.append({
@@ -128,9 +160,7 @@ def get_segments_for_asset(asset_id: str) -> list[dict]:
 
 def _try_heal_collection(col_name: str) -> None:
     """
-    ChromaDB can get into a state where SQLite has records but HNSW index
-    files are missing (e.g. after writing from a different process then
-    reopening). Heal it by re-upsertting all records so the HNSW is rebuilt.
+    Heal HNSW corruption by re-upserting all records.
     Non-fatal — any exception is swallowed.
     """
     global _col, _img_col
@@ -139,17 +169,17 @@ def _try_heal_collection(col_name: str) -> None:
         all_data = col.get(include=["embeddings", "documents", "metadatas"])
         if not all_data["ids"]:
             return
-        # Delete + recreate forces HNSW rebuild
         _client.delete_collection(col_name)
         new_col = _client.get_or_create_collection(
             name=col_name, metadata={"hnsw:space": "cosine"}
         )
-        new_col.upsert(
-            ids=all_data["ids"],
-            embeddings=all_data["embeddings"],
-            documents=all_data["documents"],
-            metadatas=all_data["metadatas"],
-        )
+        embs = all_data["embeddings"]
+        if embs:
+            new_col.upsert(ids=all_data["ids"], embeddings=embs,
+                           documents=all_data["documents"], metadatas=all_data["metadatas"])
+        else:
+            new_col.upsert(ids=all_data["ids"],
+                           documents=all_data["documents"], metadatas=all_data["metadatas"])
         if col_name == "video_segments":
             _col = new_col
         else:
@@ -157,11 +187,8 @@ def _try_heal_collection(col_name: str) -> None:
         print(f"[ChromaDB] ✓ Healed HNSW for '{col_name}' ({len(all_data['ids'])} entries)", flush=True)
     except Exception as _e:
         _msg = str(_e).lower()
-        # Suppress the common benign startup case: HNSW files missing because the
-        # collection is brand-new or has zero vectors.  Any other error is logged.
         if "nothing found on disk" not in _msg and "hnsw" not in _msg:
             print(f"[ChromaDB] Heal note for '{col_name}' (non-fatal): {_e}", flush=True)
-
 
 
 def _col_count(col) -> int:
@@ -169,34 +196,31 @@ def _col_count(col) -> int:
     try:
         return col.count()
     except Exception:
-         
         _ensure_client(get_db_path())
-        return 0   
+        return 0
 
 
 def search_videos(query: str, top_k: int = 5) -> list[dict]:
     global _col
-    if _embedder is None:
-        return []   # torch not available
+    if _col is None:
+        return []
     try:
-        cnt = _col.count() if _col is not None else 0
+        cnt = _col_count(_col)
     except Exception:
-        _ensure_client(get_db_path())
-        cnt = 0
+        return []
 
     if cnt == 0:
         return []
 
-    q_emb = _embedder.encode([query]).tolist()
     try:
-        results = _col.query(query_embeddings=q_emb, n_results=min(top_k, cnt))
+        results = _query(_col, query, min(top_k, cnt))
     except Exception:
         _try_heal_collection("video_segments")
         try:
-            cnt2 = _col.count() if _col is not None else 0
+            cnt2 = _col_count(_col) if _col is not None else 0
             if cnt2 == 0:
                 return []
-            results = _col.query(query_embeddings=q_emb, n_results=min(top_k, cnt2))
+            results = _query(_col, query, min(top_k, cnt2))
         except Exception:
             return []
 
@@ -204,11 +228,11 @@ def search_videos(query: str, top_k: int = 5) -> list[dict]:
     for i, doc in enumerate(results["documents"][0]):
         meta = results["metadatas"][0][i]
         hits.append({
-            "assetId": meta["assetId"],
-            "start_sec": meta["start_sec"],
-            "end_sec": meta["end_sec"],
-            "text": doc,
-            "score": round(1 - results["distances"][0][i], 4),
+            "assetId":    meta["assetId"],
+            "start_sec":  meta["start_sec"],
+            "end_sec":    meta["end_sec"],
+            "text":       doc,
+            "score":      round(1 - results["distances"][0][i], 4),
             "asset_type": meta.get("asset_type", "video"),
         })
     return hits
@@ -225,55 +249,52 @@ def delete_video_index(asset_id: str) -> None:
         print(f"[ChromaDB] Removed {len(img_ids)} image chunks for {asset_id[:8]}", flush=True)
 
 
-#   Image indexing  
+#  Image indexing 
 
 def index_image(asset_id: str, description: str) -> bool:
     """Store a single image description in the image_assets collection."""
     if not description.strip():
         print(f"[ChromaDB] Empty description for image {asset_id[:8]}, skipping", flush=True)
         return False
-    if _embedder is None:
-        print("[ChromaDB] Skipping index_image — embedder not available (torch missing)", flush=True)
+    if _img_col is None:
+        print("[ChromaDB] Image collection not ready — skipping", flush=True)
         return False
 
-    embedding = _embedder.encode([description]).tolist()
-    _img_col.upsert(
-        ids=[asset_id],
-        embeddings=embedding,
-        documents=[description],
-        metadatas=[{"assetId": asset_id, "asset_type": "image"}],
-    )
-    preview = description[:80].replace("\n", " ")
-    print(f"[ChromaDB] ✓ Image {asset_id[:8]} saved → {preview}…", flush=True)
-    return True
+    try:
+        _upsert(_img_col, [asset_id], [description],
+                [{"assetId": asset_id, "asset_type": "image"}])
+        preview = description[:80].replace("\n", " ")
+        print(f"[ChromaDB] ✓ Image {asset_id[:8]} saved → {preview}…", flush=True)
+        return True
+    except Exception as e:
+        print(f"[ChromaDB] index_image upsert failed: {e}", flush=True)
+        return False
 
 
 def search_images(query: str, top_k: int = 5) -> list[dict]:
     global _img_col
-    if _embedder is None:
-        return []   # torch not available
+    if _img_col is None:
+        return []
     try:
-        cnt = _img_col.count() if _img_col is not None else 0
+        cnt = _col_count(_img_col)
     except Exception:
-        _ensure_client(get_db_path())
-        cnt = 0
+        return []
 
     if cnt == 0:
         return []
-    q_emb = _embedder.encode([query]).tolist()
+
     try:
-        results = _img_col.query(query_embeddings=q_emb, n_results=min(top_k, cnt))
+        results = _query(_img_col, query, min(top_k, cnt))
     except Exception:
         return []
-
 
     hits = []
     for i, doc in enumerate(results["documents"][0]):
         meta = results["metadatas"][0][i]
         hits.append({
-            "assetId": meta["assetId"],
-            "text": doc,
-            "score": round(1 - results["distances"][0][i], 4),
+            "assetId":    meta["assetId"],
+            "text":       doc,
+            "score":      round(1 - results["distances"][0][i], 4),
             "asset_type": "image",
         })
     return hits

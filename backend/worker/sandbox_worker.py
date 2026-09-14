@@ -355,14 +355,15 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         print(f"[SandboxWorker] transcribe_audio: 0 segments (silence?) for {asset_id[:8]}", flush=True)
         return 0
 
-    # Save to ChromaDB video_segments
-    from backend.ai.VideoSemantic.indexer import _col, _embedder
-    if _embedder is None:
-        print(f"[SandboxWorker] transcribe_audio: _embedder not available — skipping save", flush=True)
+
+    # Save to ChromaDB video_segments using the indexer's embedding strategy
+    # (sentence_transformers if available, chromadb ONNX fallback otherwise)
+    from backend.ai.VideoSemantic.indexer import _col, _upsert
+    if _col is None:
+        print(f"[SandboxWorker] transcribe_audio: ChromaDB not ready — skipping save", flush=True)
         _ts.mark_failed(asset_id)
         return 0
     texts = [f"Speech: {s['text']}" for s in segments]
-    embeddings = _embedder.encode(texts).tolist()
     ids = [f"{asset_id}__audio__{i}" for i in range(len(segments))]
     metadatas = [
         {
@@ -373,10 +374,16 @@ def _do_transcribe_audio(asset_id: str, filepath: str) -> int:
         }
         for s in segments
     ]
-    _col.upsert(ids=ids, embeddings=embeddings, documents=texts, metadatas=metadatas)
-    _ts.mark_done(asset_id)
-    print(f"[SandboxWorker] transcribe_audio done: {asset_id[:8]} → {len(segments)} segments in ChromaDB", flush=True)
-    return len(segments)
+    try:
+        _upsert(_col, ids, texts, metadatas)
+        _ts.mark_done(asset_id)
+        print(f"[SandboxWorker] transcribe_audio done: {asset_id[:8]} → {len(segments)} segments in ChromaDB", flush=True)
+        return len(segments)
+    except Exception as e:
+        print(f"[SandboxWorker] transcribe_audio upsert failed: {e}", flush=True)
+        _ts.mark_failed(asset_id)
+        return 0
+
 
 
 #   Image indexing  

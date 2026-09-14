@@ -34,13 +34,15 @@ def _get_provider_config() -> tuple[str, str, str]:
     # Ollama
     chosen = cfg.get("ai.vision_model", "moondream:latest")
     try:
-        import ollama
-        models = [m.model for m in ollama.list().models]
+        import ollama, httpx
+        host = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+        _oc  = ollama.Client(host=host, timeout=httpx.Timeout(10.0, connect=3.0))
+        models = [m.model for m in _oc.list().models]
         print(f"[VideoSemantic] Ollama models available: {models}", flush=True)
         if chosen in models:
             print(f"[VideoSemantic] Using Ollama model: {chosen}", flush=True)
             return "ollama", chosen, ""
-        print(f"[VideoSemantic] Configured model {chosen!r} not found, trying fallbacks…", flush=True)
+        print(f"[VideoSemantic] Configured model {chosen!r} not found, trying fallbacks\u2026", flush=True)
         for preferred in _MODEL_PRIORITY:
             if preferred in models:
                 print(f"[VideoSemantic] Falling back to: {preferred}", flush=True)
@@ -63,12 +65,14 @@ def _get_model(override: str | None = None) -> str:
 # ── Frame description ──────────────────────────────────────────────────────────
 
 def _describe_frame_ollama(frame_path: str, model: str) -> str:
-    """Describe a frame using Ollama vision model."""
-    import ollama
+    """Describe a frame using Ollama vision model (30 s timeout)."""
+    import ollama, httpx
     with open(frame_path, "rb") as f:
         img_b64 = base64.b64encode(f.read()).decode()
 
-    response = ollama.chat(
+    host   = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
+    client = ollama.Client(host=host, timeout=httpx.Timeout(30.0, connect=5.0))
+    response = client.chat(
         model=model,
         messages=[{
             "role": "user",
@@ -76,7 +80,7 @@ def _describe_frame_ollama(frame_path: str, model: str) -> str:
             "images": [img_b64],
         }],
     )
-    msg = response.message if hasattr(response, "message") else response["message"]
+    msg     = response.message if hasattr(response, "message") else response["message"]
     content = msg.content if hasattr(msg, "content") else msg["content"]
     return content.strip()
 
