@@ -285,6 +285,8 @@ function TimelineInner() {
       playbackSeek(frame).catch(() => {});
       const api = (window as any).electronAPI;
       api?.renderSeek(frame);
+      // Reposition audio engine; if playing, it restarts from new frame
+      window.dispatchEvent(new CustomEvent('echo:audio-seek', { detail: frame }));
     },
     [dispatch],
   );

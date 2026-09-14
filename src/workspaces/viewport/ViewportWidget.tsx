@@ -173,7 +173,7 @@ export default function ViewportWidget() {
       } catch { /* backend not ready */ }
     }
 
-    // Poll for valid port
+    // Poll for valid port (only reload clips, not during active playback to avoid glitches)
     const portPollId = setInterval(() => {
       const p: number = (window as any).__ECHO_PORT__ ?? 0
       if (p && p !== currentPort) {
@@ -185,15 +185,29 @@ export default function ViewportWidget() {
       }
     }, 1000)
 
-    // Also react to track changes
+    // React to track changes
     const onTracksChanged = () => loadClips(currentPort)
     window.addEventListener('echo:tracks-changed', onTracksChanged)
     window.addEventListener('echo:render-now', onTracksChanged)
+
+    // ── Audio seek / pause from Timeline playhead & ruler ──────────────────
+    // Fired by Playhead.tsx (drag) and Timeline.tsx (ruler click)
+    const onAudioSeek = (e: Event) => {
+      const frame = (e as CustomEvent<number>).detail
+      engine.seek(frame)
+    }
+    const onAudioPause = () => {
+      engine.pause()
+    }
+    window.addEventListener('echo:audio-seek', onAudioSeek)
+    window.addEventListener('echo:audio-pause', onAudioPause)
 
     return () => {
       clearInterval(portPollId)
       window.removeEventListener('echo:tracks-changed', onTracksChanged)
       window.removeEventListener('echo:render-now', onTracksChanged)
+      window.removeEventListener('echo:audio-seek', onAudioSeek)
+      window.removeEventListener('echo:audio-pause', onAudioPause)
       engine.destroy()
       audioRef.current = null
     }
@@ -248,6 +262,9 @@ export default function ViewportWidget() {
 
   const togglePlay = useCallback(async () => {
     const api = (window as any).electronAPI;
+    // Use frameNumRef.current (updated every native frame) — never stale,
+    // unlike currentFrame React state which can lag by one render cycle.
+    const liveFrame = frameNumRef.current ?? currentFrame;
     if (isPlaying) {
       await playbackPause();
       if (isNativeRender) api?.renderPause();
@@ -256,7 +273,7 @@ export default function ViewportWidget() {
     } else {
       await playbackPlay();
       if (isNativeRender) api?.renderPlay();
-      audioRef.current?.play(currentFrame);
+      audioRef.current?.play(liveFrame);
       setIsPlaying(true);
     }
   }, [isPlaying, currentFrame, isNativeRender]);

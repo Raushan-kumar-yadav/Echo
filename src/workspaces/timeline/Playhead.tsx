@@ -27,6 +27,9 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
     const startX = e.clientX;
     const startFrame = currentFrame;
 
+    // Pause audio immediately when drag starts (prevents glitch from rapid seek calls)
+    window.dispatchEvent(new CustomEvent('echo:audio-pause'));
+
     const onMove = (ev: MouseEvent) => {
       const dx = ev.clientX - startX;
       const newFrame = Math.max(0, Math.min(totalFrames, Math.round(startFrame + dx / zoomX)));
@@ -42,6 +45,9 @@ const Playhead = memo(function Playhead({ scrollLeft, contentLeft }: Props) {
     const onUp = () => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
+      // Reposition audio to final playhead position (silently — stays paused)
+      const finalFrame = lastSeekFrame.current >= 0 ? lastSeekFrame.current : startFrame;
+      window.dispatchEvent(new CustomEvent('echo:audio-seek', { detail: finalFrame }));
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
