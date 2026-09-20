@@ -32,18 +32,6 @@ The Google Drive folder contains the complete `Echo-v1.0.0-win-x64.zip` distribu
 
 ---
 
-## ✨ What's New in v1.0.0
-
-### 🐛 Bug Fixes
-- **UI now syncs in packaged build** — Fixed SSE race condition that caused clips to not appear/update after adding or deleting them in the built `.exe`
-- **Audio plays from the correct clip** — Fixed audio track mismatch where the wrong clip's audio played under the playhead
-- **Audio stops at clip end** — Audio no longer continues playing past the clip's end boundary
-- **Seek while paused now works** — Scrubbing the timeline while paused correctly repositions audio on playback
-- **Audio included in exported video** — Fixed FFmpeg binary path resolution in the packaged build that silently skipped audio muxing
-- **AI agent no longer crashes on provider errors** — Added exponential-backoff retry on HTTP 500 upstream LLM errors
-- **Web search fixed** — Updated to `ddgs` package with rate-limit retry and text-search fallback
-
----
 
 ## 🌟 Major Features
 
