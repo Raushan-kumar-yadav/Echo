@@ -155,7 +155,13 @@ npx electron-builder build --win --publish never
 
 ## 🤖 AI Provider Setup
 
-Echo supports multiple LLM providers for the AI Director. Set `ECHO_AI_PROVIDER` in your `.env` file.
+Echo supports multiple LLM providers for the AI Director.
+
+> 💡 **Using the built `.exe`?** You don't need to edit `.env` manually.
+> Open the app → click the **Settings ⚙️** icon (top-right) → **API Keys** tab.
+> Enter your provider, API key, and model name there — they're saved automatically.
+
+For development, set these in your `.env` file:
 
 ### ✅ TokenRouter (Tested & Recommended — Free tier available)
 
@@ -212,6 +218,8 @@ Run models entirely on your machine — no API key, no internet after model down
 
 Echo uses **Stability AI** for AI image generation inside the editor. The AI Director can call `generate_image("prompt")` and the image lands directly in your library.
 
+> 💡 **Using the built `.exe`?** Go to **Settings ⚙️ → Image Generation** tab — enter your Stability AI key and pick the model/style there. No `.env` file needed.
+
 ### ✅ Stability AI (Tested)
 
 1. Get your API key: [platform.stability.ai/account/keys](https://platform.stability.ai/account/keys)
@@ -247,6 +255,8 @@ Video file → extract frames (every 2 sec) → Ollama vision model → text des
 ```
 
 ### Setup
+
+> 💡 **Using the built `.exe`?** Go to **Settings ⚙️ → Indexing** tab — choose Vision Provider (`Ollama` or `Gemini`) and set the model there. No `.env` file needed.
 
 1. Install Ollama: [ollama.com/download](https://ollama.com/download)
 2. Pull a vision model (choose one):
